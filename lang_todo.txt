@@ -1,0 +1,54 @@
+2022.12.11 check for returns in functions:
+    -cpp backand catches missing return values, but we should do that
+
+2022.12.24
+    - check for local variables or definitions with same name as functions, while also trying to call a function with the same name
+    
+2022.12.25
+    - fix token strings and multi comments and parsing empty files
+    - var memory = memory ref; should error    
+
+2023.01.07
+    - error if operator was not found for non-basic types
+    - show why arguments don't match in function call in error message
+    - fix node token texts, they are a bit off again
+    
+2023.01.11
+    - vec3 value and vec3 value.xyz compound should error, since they are not the same type? or generate the proper code if you assign a union field to a union?
+    
+2023.01.18
+    - if you try to call a local function reference, but there is a global function, whith the same name, the compiler finds the global function and calls that. var f = ...; f() -> may resolve to a global function f
+
+2023.01.28
+    - infere array and compound literal types
+    - infere loop index types
+    - maybe add loop over array with index and item
+    - maybe add defer
+    - maybe add polymorphism/macros for compounds and functions
+    - maybe add lang compiler module
+
+2023.01.31
+    - byte compare compound and union values by default. right now the c++ backend complains about not having a comparision operator
+
+2023.02.03
+    - check for duplicated switch cases
+
+2023.02.06
+    - assigning the enum type to an expression should error. e.g. "a.day = week_day;" should be "a.day = week_day.monday;"
+    - var box = [ 0, 0, width, height ] box2; should compile, union types are not working well yet
+
+2023.02.18
+    -allow for complex def values to be generated properly:
+        def table = [
+            { "hi", [ 1, 2, 3, 4, 5] u8[] } table_entry,
+            { "hi", [ 1, 4, 5] u8[] } table_entry,
+            { "hi", [ 1, 3, 4, 5] u8[] } table_entry,
+        ] table_entry[];
+
+        The issues is with using dynamic arrays and casting static arrays to them on the spot.
+        In C/C++ there is no data storage for arbitrary static array literals, only for strings.
+        So we need to generate intermediate values, just like when using locals in expressions.
+    - Function call argument evaluation is a bit broken.
+        Also we want to be able to do expand some_struct = { 1, 2, false }, so that you can skip fields and they get the default value of the literal.
+
+    

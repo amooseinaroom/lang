@@ -1,0 +1,1 @@
+override def enable_hot_reloading = true;
