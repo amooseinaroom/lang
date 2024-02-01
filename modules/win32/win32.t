@@ -23,6 +23,10 @@ func WriteFile(hFile HANDLE, lpBuffer u8 ref, nNumberOfBytesToWrite u32, lpNumbe
 func CreateDirectoryA(lpPathName cstring, lpSecurityAttributes u8 ref) (result s32) calling_convention "__stdcall" extern_binding("kernel32", true);
 func CloseHandle(hObject HANDLE) (result s32) calling_convention "__stdcall" extern_binding("kernel32", true);
 func CopyFileA(lpExistingFileName cstring, lpNewFileName cstring, bFailIfExists s32) (result s32) calling_convention "__stdcall" extern_binding("kernel32", true);
+func GetCurrentDirectoryA(nBufferLength s32, lpBuffer cstring) (result s32) calling_convention "__stdcall" extern_binding("kernel32", true);
+func FindFirstFileA(lpFileName cstring,lpFindFileData WIN32_FIND_DATAA ref) (result HANDLE) calling_convention "__stdcall" extern_binding("kernel32", true);
+func FindNextFileA(hFindFile HANDLE, lpFindFileData WIN32_FIND_DATAA ref) (result s32) calling_convention "__stdcall" extern_binding("kernel32", true);
+
 func LoadLibraryA(lpLibFileName cstring) (module HMODULE) calling_convention "__stdcall" extern_binding("kernel32", true);
 func FreeLibrary(hLibModule HMODULE) (result s32) calling_convention "__stdcall" extern_binding("kernel32", true);
 func GetProcAddress(hModule HMODULE, lpProcName cstring) (result u8 ref) calling_convention "__stdcall" extern_binding("kernel32", true);
@@ -36,6 +40,8 @@ func GetConsoleMode(hConsoleHandle HANDLE, lpMode u32 ref) (result s32) calling_
 func CreateThread(lpThreadAttributes u8 ref, dwStackSize usize, lpStartAddress THREAD_START_ROUTINE, lpParameter u8 ref, dwCreationFlags u32, lpThreadId u32 ref) (handle HANDLE) calling_convention "__stdcall" extern_binding("kernel32", true);
 func ResumeThread(hThread HANDLE) (result u32) calling_convention "__stdcall" extern_binding("kernel32", true);
 func WaitForSingleObject(hHandle HANDLE, dwMilliseconds u32) (result u32) calling_convention "__stdcall" extern_binding("kernel32", true);
+func GetSystemInfo(lpSystemInfo SYSTEM_INFO ref) calling_convention "__stdcall" extern_binding("kernel32", true);
+func GetLogicalProcessorInformation(Buffer SYSTEM_LOGICAL_PROCESSOR_INFORMATION ref, ReturnedLength u32 ref) (result u32) calling_convention "__stdcall" extern_binding("kernel32", true);
 
 func PeekMessageA(lpMsg MSG ref, hWnd HWND, wMsgFilterMin u32, wMsgFilterMax u32, wRemoveMsg u32) (result s32) calling_convention "__stdcall" extern_binding("user32", true);
 func LoadCursorA(hInstance HINSTANCE, lpCursorName cstring) (result HCURSOR)                     calling_convention "__stdcall" extern_binding("user32", true);
@@ -61,6 +67,11 @@ func SetWindowLongA(hWnd HWND, nIndex s32, dwNewLong s32) (result s32)          
 func LoadIconA(hInstance HINSTANCE, lpIconName cstring) (icon HICON)                                    calling_convention "__stdcall" extern_binding("user32", true);
 func SetClassLongPtrA(hWnd HWND, nIndex s32, dwNewLong s64 ref) (result u64 ref)                        calling_convention "__stdcall" extern_binding("user32", true);
 
+// using s64 variant since it's long is not s32 in C/C++, thanks for nothing
+// func _InterlockedIncrement(Addend s32 ref) (incremented_value s32) intrinsic("intrin.h");
+// func _InterlockedDecrement(Addend s32 ref) (decremented_value s32) intrinsic("intrin.h");
+func _InterlockedIncrement64(Addend s64 ref) (incremented_value s64) intrinsic("intrin.h");
+func _InterlockedDecrement64(Addend s64 ref) (decremented_value s64) intrinsic("intrin.h");
 
 // these actually take LARGE_INTEGER, but its the same as u64
 func QueryPerformanceFrequency(lpFrequency u64 ref) (result s32)                                        calling_convention "__stdcall" extern_binding("user32", true);
@@ -230,7 +241,7 @@ struct MONITORINFO
 struct MONITORINFOEXA
 {
     expand base MONITORINFO;
-    szDevice u8[CCHDEVICENAME];  
+    szDevice u8[CCHDEVICENAME];
 }
 
 def CCHDEVICENAME = 32;
@@ -404,8 +415,9 @@ def GENERIC_WRITE   = 0x40000000 cast(u32);
 def GENERIC_EXECUTE = 0x20000000 cast(u32);
 def GENERIC_ALL     = 0x10000000 cast(u32);
 
-def FILE_SHARE_READ       = 0x00000001 cast(u32);
-def FILE_ATTRIBUTE_NORMAL = 0x00000080 cast(u32);
+def FILE_SHARE_READ          = 0x00000001 cast(u32);
+def FILE_ATTRIBUTE_NORMAL    = 0x00000080 cast(u32);
+def FILE_ATTRIBUTE_DIRECTORY = 0x00000010 cast(u32);
 
 def CREATE_NEW    = 1 cast(u32);
 def CREATE_ALWAYS = 2 cast(u32);
@@ -603,4 +615,98 @@ struct DNS_RECORD
         PBYTE               pDataPtr;
         }
     };
+}
+
+struct SYSTEM_INFO
+{
+    expand DUMMYUNIONNAME union
+    {
+        dwOemId u32;
+
+        expand DUMMYSTRUCTNAME struct
+        {
+            wProcessorArchitecture u16;
+            wReserved              u16;
+        };
+    };
+
+    dwPageSize u32;
+    lpMinimumApplicationAddress u8 ref;
+    lpMaximumApplicationAddress u8 ref;
+    dwActiveProcessorMask       usize;
+    dwNumberOfProcessors        u32;
+    dwProcessorType             u32;
+    dwAllocationGranularity     u32;
+    wProcessorLevel             u16;
+    wProcessorRevision          u16;
+}
+
+struct SYSTEM_LOGICAL_PROCESSOR_INFORMATION
+{
+    ProcessorMask usize;
+    Relationship  LOGICAL_PROCESSOR_RELATIONSHIP;
+
+    expand DUMMYUNIONNAME union
+    {
+        ProcessorCore struct
+        {
+            Flags u8;
+        };
+
+        NumaNode struct
+        {
+            NodeNumber u32;
+        };
+
+        Cache CACHE_DESCRIPTOR;
+
+        Reserved u64[2];
+    };
+}
+
+struct CACHE_DESCRIPTOR
+{
+    Level         u8;
+    Associativity u8;
+    LineSize      u16;
+    Size          u32;
+    Type          PROCESSOR_CACHE_TYPE;
+}
+
+// enum LOGICAL_PROCESSOR_RELATIONSHIP
+type LOGICAL_PROCESSOR_RELATIONSHIP u32;
+def RelationProcessorCore    = 0 cast(LOGICAL_PROCESSOR_RELATIONSHIP);
+def RelationNumaNode         = 1 cast(LOGICAL_PROCESSOR_RELATIONSHIP);
+def RelationCache            = 2 cast(LOGICAL_PROCESSOR_RELATIONSHIP);
+def RelationProcessorPackage = 3 cast(LOGICAL_PROCESSOR_RELATIONSHIP);
+def RelationGroup            = 4 cast(LOGICAL_PROCESSOR_RELATIONSHIP);
+def RelationProcessorDie     = 5 cast(LOGICAL_PROCESSOR_RELATIONSHIP);
+def RelationNumaNodeEx       = 6 cast(LOGICAL_PROCESSOR_RELATIONSHIP);
+def RelationProcessorModule  = 7 cast(LOGICAL_PROCESSOR_RELATIONSHIP);
+def RelationAll              = 0xffff cast(LOGICAL_PROCESSOR_RELATIONSHIP);
+
+// enum PROCESSOR_CACHE_TYPE {
+type PROCESSOR_CACHE_TYPE u32;
+def CacheUnified     = 0 cast(PROCESSOR_CACHE_TYPE);
+def CacheInstruction = 1 cast(PROCESSOR_CACHE_TYPE);
+def CacheData        = 2 cast(PROCESSOR_CACHE_TYPE);
+def CacheTrac        = 3 cast(PROCESSOR_CACHE_TYPE);
+
+def MAX_PATH = 255;
+
+struct WIN32_FIND_DATAA
+{
+    dwFileAttributes u32;
+    ftCreationTime FILETIME;
+    ftLastAccessTime FILETIME;
+    ftLastWriteTime FILETIME;
+    nFileSizeHigh u32;
+    nFileSizeLow u32;
+    dwReserved0 u32;
+    dwReserved1 u32;
+    cFileName u8[MAX_PATH];
+    cAlternateFileName u8[14];
+    dwFileType    u32;  // Obsolete. Do not use
+    dwCreatorType u32;  // Obsolete. Do not us
+    wFinderFlags  u16;   // Obsolete. Do not us
 }

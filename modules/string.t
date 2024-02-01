@@ -8,8 +8,11 @@ import meta;
 
 struct string_builder_settings
 {
+    fraction_digit_count u32;
     add_enum_type b8;
 }
+
+def default_string_builder_settings = { 3, false } string_builder_settings;
 
 struct string_builder
 {
@@ -18,7 +21,7 @@ struct string_builder
     settings string_builder_settings;
 }
 
-func string_builder_from_buffer(buffer string, settings = {} string_builder_settings) (builder string_builder)
+func string_builder_from_buffer(buffer string, settings = default_string_builder_settings) (builder string_builder)
 {
     var builder string_builder;
     builder.text = buffer;
@@ -222,7 +225,7 @@ func write_s64(builder string_builder ref = null, value s64, max_digit_count u32
 }
 
 func write_f64(builder string_builder ref = null, value f64, fraction_digit_count u32, fraction_character = "."[0], max_whole_digit_count u32 = 0, padding_character u8 = "0"[0], base u8 = 10, first_character_after_9 u8 = "a"[0], location = get_call_location()) (result string)
-{    
+{
     var byte_count usize;
     if value < 0
     {
@@ -457,7 +460,7 @@ func write_typed_value(builder string_builder ref, typed_value lang_typed_value,
                     case 8
                         value = typed_value.f64_number;
 
-                    byte_count += write_f64(builder, value, 2).count;
+                    byte_count += write_f64(builder, value, builder.settings.fraction_digit_count).count;
                 }
                 else if number_type.is_signed
                 {
@@ -481,7 +484,7 @@ func write_typed_value(builder string_builder ref, typed_value lang_typed_value,
                 case 8
                     value = typed_value.base cast(f64 ref) deref;
 
-                byte_count += write_f64(builder, value, 2).count;
+                byte_count += write_f64(builder, value, builder.settings.fraction_digit_count).count;
             }
             else if number_type.is_signed
             {
@@ -836,7 +839,7 @@ func debug_print_line print_type
         print_line(location, format, values);
 }
 
-func allocate_text(memory memory_arena ref, settings = {} string_builder_settings, text string, location = get_call_location()) (result string)
+func allocate_text(memory memory_arena ref, settings = default_string_builder_settings, text string, location = get_call_location()) (result string)
 {
     var byte_count = text.count;
 
@@ -848,7 +851,7 @@ func allocate_text(memory memory_arena ref, settings = {} string_builder_setting
     return result;
 }
 
-func allocate_text(memory memory_arena ref, settings = {} string_builder_settings, format string, location = get_call_location(), expand values lang_typed_value[]) (result string)
+func allocate_text(memory memory_arena ref, settings = default_string_builder_settings, format string, location = get_call_location(), expand values lang_typed_value[]) (result string)
 {
     var builder string_builder;
     builder.settings = settings;
@@ -858,7 +861,7 @@ func allocate_text(memory memory_arena ref, settings = {} string_builder_setting
     return result;
 }
 
-func print(tmemory memory_arena ref, settings = {} string_builder_settings, format string, location = get_call_location(), expand values = {} lang_typed_value[])
+func print(tmemory memory_arena ref, settings = default_string_builder_settings, format string, location = get_call_location(), expand values = {} lang_typed_value[])
 {
     var result = allocate_text(tmemory, settings, format, values);
     platform_print(result);
@@ -866,7 +869,7 @@ func print(tmemory memory_arena ref, settings = {} string_builder_settings, form
     free(tmemory, result.base);
 }
 
-func write(buffer u8[], settings = {} string_builder_settings, format string, location = get_call_location(), expand values lang_typed_value[]) (text string)
+func write(buffer u8[], settings = default_string_builder_settings, format string, location = get_call_location(), expand values lang_typed_value[]) (text string)
 {
     var builder string_builder;
     builder.text.base = buffer.base;
@@ -877,7 +880,7 @@ func write(buffer u8[], settings = {} string_builder_settings, format string, lo
     return builder.text;
 }
 
-func write(memory memory_arena ref, text string ref, settings = {} string_builder_settings, format string, location = get_call_location(), expand values lang_typed_value[]) (text string)
+func write(memory memory_arena ref, text string ref, settings = default_string_builder_settings, format string, location = get_call_location(), expand values lang_typed_value[]) (text string)
 {
     var sub_text = allocate_text(memory, settings, format, location, values);
     text.count += sub_text.count;
@@ -886,12 +889,18 @@ func write(memory memory_arena ref, text string ref, settings = {} string_builde
     return sub_text;
 }
 
-func write(memory memory_arena ref, text string ref, settings = {} string_builder_settings, raw_text string, location = get_call_location()) (text string)
+func write(memory memory_arena ref, text string ref, settings = default_string_builder_settings, raw_text string, location = get_call_location()) (text string)
 {
     var sub_text = allocate_text(memory, settings, raw_text, location);
     text.count += sub_text.count;
     text.base = sub_text.base + sub_text.count - text.count;
     return sub_text;
+}
+
+func write(memory memory_arena ref, settings = default_string_builder_settings, format string, location = get_call_location(), expand values lang_typed_value[]) (text string)
+{
+    var text string;
+    return write(memory, text ref, settings, format, location, values);
 }
 
 func starts_with(text string, prefix string) (result b8)
@@ -918,13 +927,6 @@ func print_location(location lang_code_location)
     print("%/% %(%,%)", location.module, location.function, location.file, location.line, location.column);
 }
 
-func advance(iterator u8[] ref, count usize = 1, location = get_call_location())
-{
-    assert(count <= iterator.count, location);
-    iterator.count = iterator.count - count;
-    iterator.base  = iterator.base  + count;
-}
-
 func try_skip(iterator string ref, pattern string, location = get_call_location()) (ok b8)
 {
     if iterator.count < pattern.count
@@ -938,6 +940,12 @@ func try_skip(iterator string ref, pattern string, location = get_call_location(
 
     advance(iterator, pattern.count);
     return true;
+}
+
+func skip(iterator string ref, pattern string, location = get_call_location())
+{
+    var ok = try_skip(iterator, pattern, location);
+    assert(ok);
 }
 
 // assuming set only consistes one byte characters
@@ -1293,4 +1301,101 @@ func edit_text(text editable_text ref, characters platform_character[] ref) (res
     characters.count -= i;
 
     return reset_carret;
+}
+
+func split_path(path string) (directory string, name string, extension string)
+{
+    var directory = { 0, path.base } string;
+    
+    while path.count
+    {
+        var count = try_skip_until(path ref, "/", true, false).count;
+        if not count
+            break;
+    
+        directory.count += count;
+    }
+    
+    // exlude last "/"
+    if directory.count
+        directory.count -= 1;
+    
+    var name = { 0, path.base } string;
+    
+    while path.count
+    {
+        var count = try_skip_until(path ref, ".", true, false).count;
+        if not count
+            break;
+    
+        name.count += count;
+    }
+    
+    if not name.count
+    {
+        name = path;
+        advance(path ref, name.count);
+    }
+    else
+    {
+        name.count -= 1; // remove .
+    }
+        
+    var extension = path;
+    
+    return directory, name, extension;
+}
+
+func get_absolute_path(buffer string, working_directory string, relative_path string) (absolute_path string)
+{
+    // COMPILER BUG: quotes in get_call_argument_text is not escaped
+    def slash = "/"[0];
+    assert(not working_directory.count or (working_directory[working_directory.count - 1] is_not slash));
+    assert(not relative_path.count or (relative_path[relative_path.count - 1] is_not slash));
+
+    var builder = string_builder_from_buffer(buffer);
+    write(builder ref, working_directory);
+
+    while relative_path.count
+    {
+        var directory = try_skip_until_set(relative_path ref, "/", false, true);
+        assert(directory.count);
+
+        try_skip(relative_path ref, "/");
+
+        if directory is ".."
+        {
+            var path = builder.text;
+            loop var i usize; path.count
+            {
+                if path[path.count - i - 1] is "/"[0]
+                {
+                    path.count -= i + 1;
+                    break;
+                }
+            }
+
+            builder.text = path;
+        }
+        else if directory is "."
+        {
+            assert(builder.text.count);
+        }
+        else
+        {
+            write(builder ref, "/%", directory);
+        }
+    }
+
+    return builder.text;
+}
+
+func latin_to_lower_case(text string)
+{
+    loop var i usize; text.count
+    {
+        var letter = text[i];
+        if (letter >= "A"[0]) and (letter <= "Z"[0])        
+            text[i] = text[i] - "A"[0] + "a"[0];        
+    }
 }

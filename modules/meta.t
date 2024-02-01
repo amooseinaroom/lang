@@ -163,3 +163,31 @@ func get_base_array(array lang_typed_value) (base_array lang_base_array)
 
     return base_array;
 }
+
+func get_enum_name(enum_type lang_type_info, value usize) (name string)
+{
+    assert(enum_type.type_type is lang_type_info_type.enumeration);
+    var enumeration_type = enum_type.enumeration_type deref;
+    loop var i usize; enumeration_type.items.count
+    {
+        if enumeration_type.items[i].value is value
+        {
+            return enumeration_type.items[i].name;                                   
+        }
+    }
+    
+    return {} string;
+}
+
+func get_field_byte_offset(compound_type_info lang_type_info, name string) (ok b8, byte_offset u32)
+{
+    assert(compound_type_info.type_type is lang_type_info_type.compound);
+    var compound_type = compound_type_info.compound_type deref;
+    loop var i usize; compound_type.fields.count
+    {
+        if compound_type.fields[i].name is name        
+            return true, compound_type.fields[i].byte_offset cast(u32);
+    }
+    
+    return false, 0;
+}

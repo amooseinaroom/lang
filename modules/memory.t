@@ -33,22 +33,34 @@ func free(arena memory_arena ref, location = get_call_location())
     platform_memory_free(arena.base, location);
 }
 
-func allocate_type(arena memory_arena ref, type lang_type_info, location = get_call_location()) (result u8 ref)
+func allocate_type(arena memory_arena ref, type_info lang_type_info, location = get_call_location()) (result u8 ref)
 {
-    return allocate(arena, type.byte_count, type.byte_alignment, location);
+    if type_info.indirection_count
+    {
+        type_info.byte_count     = 8;
+        type_info.byte_alignment = 8;
+    }
+    
+    return allocate(arena, type_info.byte_count, type_info.byte_alignment, location);
 }
 
 func allocate(arena memory_arena ref, typed_value lang_typed_value, location = get_call_location())
 {
     assert(typed_value.type.indirection_count >= 2, "passed value needs to be a ref ref");
 
-    typed_value.type.indirection_count -= 1;
+    typed_value.type.indirection_count -= 2;
     typed_value.base cast(u8 ref ref) deref = allocate_type(arena, typed_value.type, location);
 }
 
-func allocate_array(arena memory_arena ref, type lang_type_info, count usize, location = get_call_location()) (result u8 ref)
-{
-    return allocate(arena, type.byte_count * count, type.byte_alignment, location);
+func allocate_array(arena memory_arena ref, type_info lang_type_info, count usize, location = get_call_location()) (result u8 ref)
+{    
+    if type_info.indirection_count
+    {
+        type_info.byte_count     = 8;
+        type_info.byte_alignment = 8;
+    }
+    
+    return allocate(arena, type_info.byte_count * count, type_info.byte_alignment, location);
 }
 
 func allocate(arena memory_arena ref, byte_byte_count usize, byte_alignment u32, location = get_call_location()) (result u8 ref)

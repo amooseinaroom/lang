@@ -18,6 +18,12 @@ func asin(_X f64) (result f64)       calling_convention "__cdecl" extern_binding
 func acos(_X f64) (result f64)       calling_convention "__cdecl" extern_binding("kernel32", false);
 func atan2(_Y f64, _X f64) (result f64) calling_convention "__cdecl" extern_binding("kernel32", false);
 
+func floor(_X f64) (result f64) calling_convention "__cdecl" extern_binding("kernel32", false);
+func ceil(_X f64)  (result f64) calling_convention "__cdecl" extern_binding("kernel32", false);
+
+func floorf(_X f32) (result f32) calling_convention "__cdecl" extern_binding("kernel32", false);
+func ceilf(_X f32)  (result f32) calling_convention "__cdecl" extern_binding("kernel32", false);
+
 func sqrt(_X f32) (result f32)
 {
     return sqrt(_X cast(f64)) cast(f32);
@@ -83,7 +89,7 @@ func sign_or_zero(value f32) (result f32)
 {
     if value is 0.0
         return 0.0;
-    
+
     return sign(value);
 }
 
@@ -117,20 +123,18 @@ func clamp(a f32, min f32, max f32) (result f32)
         return min;
     else if a > max
         return max;
-    else 
+    else
         return a;
 }
 
 func floor(value f32) (result f32)
 {
-    var result = value - fmod(value, 1.0);
-    return result;
+    return floorf(value);
 }
 
 func ceil(value f32) (result f32)
 {
-    var result = value + (1 - fmod(value, 1.0));
-    return result;
+    return ceilf(value);
 }
 
 func lerp(from f32, to f32, ratio f32) (result f32)
@@ -176,7 +180,7 @@ func clamp(a s32, min s32, max s32) (result s32)
         return min;
     else if a > max
         return max;
-    else 
+    else
         return a;
 }
 
@@ -223,7 +227,7 @@ type rgba8 union
         b u8;
         a u8;
     };
-    
+
     expand rgba_alias struct
     {
         red   u8;
@@ -243,7 +247,7 @@ func lerp(from rgba8, to rgba8, factor f32) (result rgba8)
     var one_minus_factor = 1 - factor;
     loop var i; from.count
         from[i] = ((from[i] * one_minus_factor) + (to[i] * factor)) cast(u8);
-        
+
     return from;
 }
 
@@ -257,4 +261,25 @@ func slow_in_fast_out(ratio f32) (result f32)
 {
     assert((0 <= ratio) and (ratio <= 1));
     return ratio * ratio;
+}
+
+func apply_spring(current f32, target f32, strength f32, delta_seconds f32) (next f32)
+{
+    var delta = target - current;
+    current += delta * (strength * 0.5 * delta_seconds * delta_seconds);
+    return current;
+}
+
+func apply_spring(current vec2, target vec2, strength f32, delta_seconds f32) (next vec2)
+{
+    var delta = target - current;
+    current += delta * (strength * 0.5 * delta_seconds * delta_seconds);
+    return current;
+}
+
+func apply_spring(current vec3, target vec3, strength f32, delta_seconds f32) (next vec3)
+{
+    var delta = target - current;
+    current += delta * (strength * 0.5 * delta_seconds * delta_seconds);
+    return current;
 }

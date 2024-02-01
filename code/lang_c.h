@@ -785,7 +785,8 @@ void print_type_info(lang_c_buffer *buffer, lang_complete_type type)
     
     auto type_index = base_type->type_index;
     
-    // get type without indirectio or we allways get point byte count and alignment
+    // TODO: is this a good idea? don't we want the actual byte count and alignment if it's a pointer?
+    // get type without indirection or we allways get pointer byte count and alignment
     auto direct_type = type;
     direct_type.name_type.indirection_count = 0;
     direct_type.base_type.indirection_count = 0;
@@ -835,6 +836,11 @@ void print_c_string(string_builder *builder, string text, bool is_raw)
             case '\n':
             {
                 print(builder, "\\n");
+            } break;
+            
+            case '"':
+            {
+                print(builder, "\\\"");
             } break;
             
             default:

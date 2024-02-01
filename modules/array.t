@@ -330,3 +330,10 @@ func clear_value(typed_value lang_typed_value)
 
     clear(data);
 }
+
+func advance(iterator u8[] ref, count usize = 1, location = get_call_location())
+{
+    assert(count <= iterator.count, location);
+    iterator.count -= count;
+    iterator.base  += count;
+}

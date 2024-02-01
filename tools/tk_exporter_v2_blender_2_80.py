@@ -594,6 +594,9 @@ class tk_mesh_exporter(bpy.types.Operator):
 
             if has_uv and len(active_uvs) and self.with_tangents:
                 mesh.calc_tangents()
+                
+                # even though the values should not change, we need to get the updated active_uvs
+                active_uvs = mesh.uv_layers.active.data # get updated uvs?
                             
             unique_vertices = []
             smooth_vertices = {}
@@ -657,12 +660,11 @@ class tk_mesh_exporter(bpy.types.Operator):
                 if loop_index != -1:
                     vertex.tangent = swap_yz(mesh.loops[loop_index].tangent[:])
                 
-                if active_uvs:
-                    vertex.uv = (active_uvs[loop_index].uv[:])
+                    if active_uvs:
+                        vertex.uv = (active_uvs[loop_index].uv[:])
 
-                if mesh.vertex_colors:
-                    vertex.color = (mesh.vertex_colors[0].data[loop_index].color[:])            
-                
+                    if mesh.vertex_colors:
+                        vertex.color = (mesh.vertex_colors[0].data[loop_index].color[:])
                 
                 if node.armature and len(evaluated_object.vertex_groups) > 0:
                     # tupels of (blend_weight, bone_index)

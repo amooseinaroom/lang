@@ -144,6 +144,31 @@ func platform_init platform_init_type
     platform_require(QueryPerformanceFrequency(platform.ticks_per_second ref));
     platform_require(QueryPerformanceCounter(platform.time_ticks ref));
 
+    {
+        var info SYSTEM_INFO;
+        GetSystemInfo(info ref);
+        platform.logical_cpu_count = info.dwNumberOfProcessors;
+    }
+
+    {
+        var working_directory string = platform.working_directory_buffer;
+
+        var count = GetCurrentDirectoryA(0, null);
+        platform_require(count, "GetCurrentDirectory(0, null) failed");
+        assert(count <= working_directory.count);
+
+        platform_require( GetCurrentDirectoryA(count, working_directory.base cast(cstring)) );
+        working_directory.count = (count - 1) cast(usize); // has 0 terminal character at the end for win32 functions, but excluded from count
+
+        loop var i u32; working_directory.count cast(u32)
+        {
+            if working_directory[i] is "\\"[0]
+                working_directory[i] = "/"[0];
+        }
+
+        platform.working_directory = working_directory;
+    }
+
     platform_win32_ticks_per_second = platform.ticks_per_second;
 }
 
@@ -194,13 +219,13 @@ func platform_window_init platform_window_init_type
     assert(not window.handle);
 
     var window_style = WS_OVERLAPPEDWINDOW;
-        
+
     var client_rect RECT;
 
     if not platform.monitor_count
         platform_require(EnumDisplayMonitors(null, null, get_function_reference(platform_win32_monitor_enumerate_callback MONITORENUMPROC), 0));
 
-    if x is_not -1                
+    if x is_not -1
         client_rect.left = x;
 
     var monitor_handle = platform_win32_get_monitor(platform, monitor_id, window);
@@ -209,19 +234,19 @@ func platform_window_init platform_window_init_type
     monitor_info.cbSize = type_byte_count(MONITORINFO);
     platform_require(GetMonitorInfoA(monitor_handle, monitor_info ref));
 
-    if y is_not -1        
+    if y is_not -1
         client_rect.top = monitor_info.rcMonitor.bottom - height - y;
 
-    client_rect.right  = client_rect.left + width;    
+    client_rect.right  = client_rect.left + width;
     client_rect.bottom = client_rect.top  + height;
-    AdjustWindowRect(client_rect ref, window_style, 0);    
+    AdjustWindowRect(client_rect ref, window_style, 0);
 
-    if x is -1        
+    if x is -1
         x = CW_USEDEFAULT;
     else
         x = client_rect.left;
 
-    if y is -1        
+    if y is -1
         y = CW_USEDEFAULT;
     else
         y = client_rect.top;
@@ -229,8 +254,8 @@ func platform_window_init platform_window_init_type
     var buffer u8[512];
     window.handle = CreateWindowExA(0, platform.window_class_name, as_cstring(buffer, title), window_style, x, y, client_rect.right - client_rect.left, client_rect.bottom - client_rect.top, null, null, platform.instance, null);
     platform_require(window.handle is_not INVALID_HANDLE_VALUE);
-       
-    ShowWindow(window.handle, SW_SHOW);    
+
+    ShowWindow(window.handle, SW_SHOW);
 
     // so we can reference the platform in the window callback
     // a global variable might be better
@@ -259,7 +284,7 @@ func platform_window_init platform_window_init_type2
 }
 
 struct platform_window_placement
-{    
+{
     position   vec2s;
     size       vec2s;
     monitor_id platform_monitor_id;
@@ -284,7 +309,7 @@ func platform_window_get_placement platform_window_get_placement_type
         }
     }
 
-    var client_rectangle RECT;    
+    var client_rectangle RECT;
     GetClientRect(window.handle, client_rectangle ref);
     var min POINT;
     min.x = client_rectangle.left;
@@ -299,7 +324,7 @@ func platform_window_get_placement platform_window_get_placement_type
     placement.size.width  = width;
     placement.size.height = height;
 
-    return placement;    
+    return placement;
 }
 
 func platform_window_set_placement platform_window_set_placement_type
@@ -309,7 +334,7 @@ func platform_window_set_placement platform_window_set_placement_type
 
     var monitor_handle = platform_win32_get_monitor(platform, placement.monitor_id, window);
     platform_require(GetMonitorInfoA(monitor_handle, monitor_info ref));
-    
+
     var client_rectangle RECT;
     GetClientRect(window.handle, client_rectangle ref);
 
@@ -703,7 +728,7 @@ func platform_fatal_error_message platform_fatal_error_message_type
     switch result
     case IDTRYAGAIN
     {
-        if IsDebuggerPresent()        
+        if IsDebuggerPresent()
             __debugbreak();
 
         platform_memory_free(builder.text.base);
@@ -775,6 +800,21 @@ func as_cstring(buffer u8[], text string) (ctext cstring)
 {
     write(buffer, "%\0", text);
     return buffer.base cast(cstring);
+}
+
+func cstring_count(text cstring) (count usize)
+{
+    assert(text);
+    var count usize;
+    while (text + count) deref
+        count += 1;
+
+    return count;
+}
+
+func as_string(text cstring) (result string)
+{
+    return { cstring_count(text), text cast(u8 ref) } string;
 }
 
 func platform_get_file_info platform_get_file_info_type
@@ -900,6 +940,87 @@ func platform_create_directory platform_create_directory_type
     return is_new;
 }
 
+struct platform_file_search_iterator
+{
+    expand base platform_file_search_iterator_base;
+
+    expand win32 struct
+    {
+        find_data WIN32_FIND_DATAA;
+        handle    HANDLE;
+    };
+}
+
+func platform_file_search_init platform_file_search_init_type
+{
+    var relative_path_prefix string;
+    relative_path_prefix.base = relative_path_pattern.base;
+    loop var i u32; relative_path_pattern.count
+    {
+        if relative_path_pattern[i] is "/"[0]
+            relative_path_prefix.count = i + 1;
+        
+        // COMPILER BUG: quotes in expression text is not escaped
+        def slash = "\\"[0];
+        assert(relative_path_pattern[i] is_not slash);
+    }
+
+    var name = { relative_path_pattern.count - relative_path_prefix.count, relative_path_prefix.base + relative_path_prefix.count } string;
+
+    var pattern cstring;
+    var pattern_buffer u8[platform_max_path_count];
+    if name.count
+        pattern = write(pattern_buffer, "%*%\0", relative_path_prefix, name).base cast(cstring);
+    else
+        pattern = write(pattern_buffer, "%*\0", relative_path_prefix).base cast(cstring);
+
+    var iterator platform_file_search_iterator;
+    iterator.relative_path_prefix = relative_path_prefix;
+
+    iterator.win32.handle = FindFirstFileA(pattern, iterator.win32.find_data ref);
+    if (iterator.win32.handle is INVALID_HANDLE_VALUE)
+        iterator.win32.handle = null;
+
+    return iterator;
+}
+
+func platform_file_search_next platform_file_search_next_type
+{
+    if not iterator.win32.handle
+        return false;
+
+    iterator.found_file.is_directory = (iterator.win32.find_data.dwFileAttributes bit_and FILE_ATTRIBUTE_DIRECTORY);
+
+    if (iterator.win32.find_data.cFileName[0] is "."[0]) and (iterator.win32.find_data.cFileName[1] is 0)
+    {
+        // copy, since we will free it
+        iterator.found_file.relative_path = write(iterator.found_file.relative_path_buffer, "%", iterator.relative_path_prefix);
+        
+        // remove trailing '/' if any
+        if iterator.found_file.relative_path.count                    
+            iterator.found_file.relative_path.count -= 1;
+    }
+    else
+    {
+        var file_name = as_string(iterator.win32.find_data.cFileName.base cast(cstring));
+        
+        iterator.found_file.relative_path = write(iterator.found_file.relative_path_buffer, "%%", iterator.relative_path_prefix, file_name);
+
+        loop var i u32; iterator.found_file.relative_path.count
+        {
+            if iterator.found_file.relative_path[i] is "\\"[0]
+                iterator.found_file.relative_path[i] = "/"[0];
+        }
+    }
+
+    iterator.found_file.absolute_path = get_absolute_path(iterator.found_file.absolute_path_buffer, platform.working_directory, iterator.found_file.relative_path);
+
+    if not FindNextFileA(iterator.win32.handle, iterator.win32.find_data ref)
+        iterator.win32.handle = null;
+
+    return true;
+}
+
 func platform_load_library platform_load_library_type
 {
     var buffer u8[512];
@@ -941,13 +1062,13 @@ func platform_enable_console platform_enable_console_type
     }
     else
     {
-        // try attach to console first, otherwise allocate one        
+        // try attach to console first, otherwise allocate one
         if not AttachConsole(ATTACH_PARENT_PROCESS)
-        {        
+        {
             var error = GetLastError();
             if error
                 platform_require(AllocConsole());
-        }    
+        }
 
         platform_win32_console_output = GetStdHandle(STD_OUTPUT_HANDLE);
         platform_require(platform_win32_console_output is_not INVALID_HANDLE_VALUE);
@@ -960,8 +1081,8 @@ func platform_enable_console platform_enable_console_type
             platform_require(AllocConsole());
 
             platform_win32_console_output = GetStdHandle(STD_OUTPUT_HANDLE);
-            platform_require(platform_win32_console_output is_not INVALID_HANDLE_VALUE);        
-        }   
+            platform_require(platform_win32_console_output is_not INVALID_HANDLE_VALUE);
+        }
     }
 
     if platform
@@ -974,7 +1095,7 @@ func platform_print platform_print_type
     {
         var written_count u32;
         // while debugging WriteConsoleA does not work for debug output so we use WriteFile instead
-        platform_require(WriteFile(platform_win32_console_output, text.base, text.count cast(u32), written_count ref, null));        
+        platform_require(WriteFile(platform_win32_console_output, text.base, text.count cast(u32), written_count ref, null));
         assert(text.count is written_count);
     }
 }
@@ -1100,6 +1221,16 @@ func platform_thread_wait platform_thread_wait_type
     platform_require(CloseHandle(thread.handle));
 
     thread deref = {} platform_thread;
+}
+
+func platform_locked_increment platform_locked_increment_type
+{
+    return _InterlockedIncrement64(value);
+}
+
+func platform_locked_decrement platform_locked_decrement_type
+{
+    return _InterlockedDecrement64(value);
 }
 
 // avoids expensive polling of unconnected controllers

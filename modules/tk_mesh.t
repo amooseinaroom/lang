@@ -58,13 +58,23 @@ enum tk_vertex_attribute u32
     invalid = -1 cast(u32);
     position;
     normal;
+    tangent;
     uv;
     blend_indices;
     blend_weights;
     color;
 }
 
-func tk_mesh_error(source string, iterator string ref) (ok b8, error_line string, error_line_number u32, error_column u32)
+
+struct tk_mesh_result
+{
+    ok b8;
+    error_line string;
+    error_line_number u32;
+    error_column u32;
+}
+
+func tk_mesh_error(source string, iterator string ref) (result tk_mesh_result)
 {
     var it = source;
     var line_count u32;
@@ -78,11 +88,11 @@ func tk_mesh_error(source string, iterator string ref) (ok b8, error_line string
         line_count += 1;
     }
     
-    return false, line, line_count + 1, (iterator.base - line.base) cast(u32);
+    return { false, line, line_count + 1, (iterator.base - line.base) cast(u32) } tk_mesh_result;
 }
 
 // NOTE: mesh.vertex_type points to mesh.compound_type, so make sure to always pass a persistant reference
-func tk_mesh_load(mesh tk_mesh ref, source string, memory memory_arena ref) (ok b8, error_line string, error_line_number u32, error_column u32)
+func tk_mesh_load(mesh tk_mesh ref, source string, memory memory_arena ref) (result tk_mesh_result)
 {
     var _test_memory = memory deref;
     var test_memory = _test_memory ref;
@@ -262,6 +272,7 @@ func tk_mesh_load(mesh tk_mesh ref, source string, memory memory_arena ref) (ok 
             node.parent_index = parent_index cast(u32);
             node.draw_command_offset = draw_command_offset;
             node.draw_command_count = draw_command_count;
+            draw_command_offset += draw_command_count;
                         
             node_index += 1;
             

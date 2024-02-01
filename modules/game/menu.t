@@ -1,5 +1,6 @@
 import platform;
 import math;
+import font;
 
 struct menu_stack_entry
 {

@@ -51,7 +51,9 @@ func gl_debug_message_callback GLDEBUGPROC
     while (text.base + text.count) deref is_not 0
         text.count = text.count + 1;
 
-    print("GL-Message: %\n", text);
+    // ignore compile errors, we handle them ourself
+    if source is_not GL_DEBUG_SOURCE_SHADER_COMPILER
+        print("GL-Message: %\n", text);
 
     assert((type is_not GL_DEBUG_TYPE_ERROR) or (source is GL_DEBUG_SOURCE_SHADER_COMPILER), "GL-Message: %\n", text);
 }
@@ -445,6 +447,21 @@ func gl_get_texture_color_format(color_format u32) (color_format u32, internal_c
         color_format          = GL_RGB;
         internal_color_format = GL_SRGB;
     }
+    case GL_DEPTH_COMPONENT
+    {
+        color_format          = GL_DEPTH_COMPONENT;
+        internal_color_format = GL_DEPTH_COMPONENT;
+    }    
+    case GL_DEPTH_COMPONENT24
+    {
+        color_format          = GL_DEPTH_COMPONENT;
+        internal_color_format = GL_DEPTH_COMPONENT24;
+    }   
+    case GL_DEPTH_STENCIL
+    {
+        color_format          = GL_DEPTH_COMPONENT;
+        internal_color_format = GL_DEPTH_STENCIL;
+    }    
     else
     {
         assert(0);
@@ -528,6 +545,14 @@ struct gl_framebuffer
     depth_stencil_format       u32;
 }
 
+struct gl_framebuffer_color_and_depth
+{
+    expand base gl_framebuffer;
+    
+    color_buffer         u32;
+    depth_stencil_buffer u32;    
+}
+
 func resize_framebuffer(gl gl_api ref, framebuffer gl_framebuffer ref, width s32, height s32, color_buffers u32[], depth_stencil_buffer u32 = 0)
 {
     assert(color_buffers.count is framebuffer.color_buffer_count);
@@ -593,6 +618,21 @@ func resize_framebuffer(gl gl_api ref, framebuffer gl_framebuffer ref, width s32
         glBindRenderbuffer(GL_RENDERBUFFER, 0);
         glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, 0);
     }
+}
+
+
+func get_framebuffer_texture(framebuffer gl_framebuffer, texture_handle u32, is_depth_stencil = false) (texture gl_texture)
+{
+    assert(not is_depth_stencil or not framebuffer.depth_stencil_format);
+    
+    var format u32;
+    if is_depth_stencil
+        format = framebuffer.depth_stencil_format;
+    else
+        format = framebuffer.format;
+        
+    var texture = { texture_handle, framebuffer.width, framebuffer.height, format } gl_texture;
+    return texture;
 }
 
 func destroy(gl gl_api ref, framebuffer gl_framebuffer ref, color_buffers u32[], depth_stencil_buffer u32 = 0)
@@ -707,7 +747,7 @@ func attach_color_cubemap_texture(gl gl_api ref, framebuffer gl_framebuffer ref,
     glGenTextures(1, texture ref);
 
     assert(not framebuffer.sample_count);
-    
+
     glBindTexture(GL_TEXTURE_CUBE_MAP, texture);
 
     glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -716,7 +756,7 @@ func attach_color_cubemap_texture(gl gl_api ref, framebuffer gl_framebuffer ref,
     glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, filter);
 
     loop var i u32; 6
-        glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, framebuffer.format, framebuffer.width, framebuffer.height, 0, GL_RGB, GL_BYTE, null);        
+    glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, framebuffer.format, framebuffer.width, framebuffer.height, 0, GL_RGB, GL_BYTE, null);
 
     glBindTexture(GL_TEXTURE_2D, 0);
 
@@ -752,7 +792,7 @@ func attach_color_buffer(gl gl_api ref, framebuffer gl_framebuffer ref, location
     return buffer;
 }
 
-func attach_depth_stencil_texture(gl gl_api ref, framebuffer gl_framebuffer ref, depth_stencil_format = GL_DEPTH24_STENCIL8, with_stencil = false, location = get_call_location()) (texture u32)
+func attach_depth_stencil_texture(gl gl_api ref, framebuffer gl_framebuffer ref, depth_stencil_format u32 = GL_DEPTH_STENCIL, with_stencil = false, location = get_call_location()) (texture u32)
 {
     assert(not framebuffer.depth_stencil_format, "framebuffer can only have one depth stencil attachment", location);
     var texture u32;
@@ -773,7 +813,9 @@ func attach_depth_stencil_texture(gl gl_api ref, framebuffer gl_framebuffer ref,
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
-        glTexImage2D(GL_TEXTURE_2D, 0, depth_stencil_format, framebuffer.width, framebuffer.height, 0, depth_stencil_format, GL_FLOAT, null);
+        var result = gl_get_texture_color_format(depth_stencil_format);
+        glTexImage2D(GL_TEXTURE_2D, 0, result.internal_color_format, framebuffer.width, framebuffer.height, 0, result.color_format, GL_FLOAT, null);
+        depth_stencil_format = result.color_format;
 
         glBindTexture(GL_TEXTURE_2D, 0);
     }
@@ -973,6 +1015,9 @@ func resize_buffer(gl gl_api ref, vertex_buffer gl_vertex_buffer ref, attribute_
     base_buffer.byte_count = vertex_buffer.vertex_count * vertex_type.byte_count cast(u32);
     var byte_count = vertex_count * vertex_type.byte_count;
     var was_recreated = resize_buffer(gl, GL_ARRAY_BUFFER, base_buffer ref, byte_count, vertices);
+    
+    // type may have changed
+    was_recreated or= base_buffer.handle and (vertex_buffer.item_byte_count is_not vertex_type.byte_count cast(u32));
 
     vertex_buffer.vertex_buffer   = base_buffer.handle;
     vertex_buffer.vertex_count    = vertex_count cast(u32);
@@ -1007,7 +1052,7 @@ func resize_buffer(gl gl_api ref, vertex_buffer gl_vertex_buffer ref, attribute_
         loop var i u32; compound.fields.count
         {
             var field = compound.fields[i];
-            
+
             var item_count s32 = 1;
             var do_normalize = false;
 
@@ -1027,7 +1072,7 @@ func resize_buffer(gl gl_api ref, vertex_buffer gl_vertex_buffer ref, attribute_
                 number_type = array.item_type.number_type.number_type;
             }
             case lang_type_info_type.union
-            {                
+            {
                 if field.type.union_type is get_type_info(rgba8).union_type
                 {
                     do_normalize = true;
@@ -1061,7 +1106,7 @@ func resize_buffer(gl gl_api ref, vertex_buffer gl_vertex_buffer ref, attribute_
                 assert(0);
             }
 
-            var gl_type = type_map[number_type];            
+            var gl_type = type_map[number_type];
 
             var attribute_index = -1 cast(u32);
             loop var i u32; enumeration.items.count
@@ -1123,7 +1168,7 @@ struct gl_uniform_buffer
 // if you want to offset into the uniform buffer, items need to be aligned a certain way
 // for that tmemory is required to copy the items to an intermediate buffer with the required alignment
 func resize_buffer_items(gl gl_api ref, uniform_buffer gl_uniform_buffer ref, bind_index u32, item_type lang_type_info, item_count usize = 1, data = {} u8[], tmemory memory_arena ref = null)
-{    
+{
     var item_byte_count = item_type.byte_count cast(u32);
     if tmemory
         item_byte_count = aligned_uniform_buffer_item_byte_count(gl, item_type.byte_count cast(u32));

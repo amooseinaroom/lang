@@ -4,11 +4,7 @@ rem call "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\B
 
 rem version 0 - 21.05.2022
 
-set name=
-if "%name%"=="" (
-    rem find directory name and use it as exe name
-    for %%I in (.) do set name=%%~nxI
-)
+set name=lang
 
 set includes=/I %cd%/code /I %cd%/common /I %cd%/common/win32
 

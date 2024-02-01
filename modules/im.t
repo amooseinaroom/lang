@@ -163,6 +163,13 @@ func push_triangle(im im_api ref, triangle vec3[3], color vec4)
     }
 }
 
+func push_triangle_lines(im im_api ref, triangle vec3[3], color vec4, expand style = im_default_opaque_style)
+{
+    push_line(im, triangle[0], triangle[1], color, style);
+    push_line(im, triangle[1], triangle[2], color, style);
+    push_line(im, triangle[2], triangle[0], color, style);
+}
+
 struct im_style
 {
     viewport_thickness f32;
@@ -283,7 +290,7 @@ func push_circle(im im_api ref, center vec3, radius f32, corner_count = 32, colo
     var forward = im.camera_to_world.translation - center;
     var right = normalize(cross(im.camera_to_world.up, forward));
     var up    = normalize(cross(right, forward));
-    
+
     push_circle(im, center, radius, right, up, corner_count, color, style);
 }
 

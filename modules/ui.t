@@ -77,7 +77,7 @@ struct ui_system
     current_box box2;
 
     print struct
-    {        
+    {
         previous_font_glyphs font_glyph ref; // assuming different fonts have different glyph data
         previous_glyph_index u32;
     };
@@ -548,7 +548,7 @@ func get_quad_intersection(ui ui_system ref, box box2, uv_box = {} box2) (ok b8,
     if not result.ok
         return false, {} box2, {} box2;
 
-    var intersection = result.intersection;        
+    var intersection = result.intersection;
 
     var box_size = box.max - box.min;
     var inverse_box_size = [ 1.0 / box_size.x, 1.0 / box_size.y ] vec2;
@@ -567,6 +567,11 @@ func get_quad_intersection(ui ui_system ref, box box2, uv_box = {} box2) (ok b8,
 }
 
 func add_quad(ui ui_system ref, expand quad_info = ui_default_quad_info, x s32, y s32, width s32, height s32, texture = {} gl_texture, texture_x s32 = 0, texture_y s32 = 0, texture_width s32 = 1, texture_height s32 = 1)
+{
+    add_quad(ui, quad_info, quad_info, quad_info, quad_info, x, y, width, height, texture, texture_x, texture_y, texture_width, texture_height);
+}
+
+func add_quad(ui ui_system ref, expand quad_infos ui_quad_info[4], x s32, y s32, width s32, height s32, texture = {} gl_texture, texture_x s32 = 0, texture_y s32 = 0, texture_width s32 = 1, texture_height s32 = 1)
 {
     var command = add_command(ui, texture);
     if not command
@@ -587,34 +592,37 @@ func add_quad(ui ui_system ref, expand quad_info = ui_default_quad_info, x s32, 
         ui.quad_command_count -= 1;
         return;
     }
+    
+    loop var i; quad_infos.count - 1
+        assert(quad_infos[i].layer is quad_infos[i + 1].layer);
 
     ui.current_box = merge(ui.current_box, box);
 
-    command.layer = ui.base_layer + quad_info.layer;
+    command.layer = ui.base_layer + quad_infos[0].layer;
 
     command.vertices[0].position = result.intersection_box.min;
     command.vertices[0].uv       = result.intersection_uv_box.min;
-    command.vertices[0].color    = quad_info.color;
-    command.vertices[0].saturation = quad_info.saturation;
+    command.vertices[0].color    = quad_infos[0].color;
+    command.vertices[0].saturation = quad_infos[0].saturation;
 
     command.vertices[2].position = result.intersection_box.max;
     command.vertices[2].uv       = result.intersection_uv_box.max;
-    command.vertices[2].color    = quad_info.color;
-    command.vertices[2].saturation = quad_info.saturation;
+    command.vertices[2].color    = quad_infos[2].color;
+    command.vertices[2].saturation = quad_infos[2].saturation;
 
     command.vertices[1].position.x = command.vertices[2].position.x;
     command.vertices[1].position.y = command.vertices[0].position.y;
     command.vertices[1].uv.x       = command.vertices[2].uv.x;
     command.vertices[1].uv.y       = command.vertices[0].uv.y;
-    command.vertices[1].color      = quad_info.color;
-    command.vertices[1].saturation = quad_info.saturation;
+    command.vertices[1].color      = quad_infos[1].color;
+    command.vertices[1].saturation = quad_infos[1].saturation;
 
     command.vertices[3].position.x = command.vertices[0].position.x;
     command.vertices[3].position.y = command.vertices[2].position.y;
     command.vertices[3].uv.x       = command.vertices[0].uv.x;
     command.vertices[3].uv.y       = command.vertices[2].uv.y;
-    command.vertices[3].color      = quad_info.color;
-    command.vertices[3].saturation = quad_info.saturation;
+    command.vertices[3].color      = quad_infos[3].color;
+    command.vertices[3].saturation = quad_infos[3].saturation;
 }
 
 func set_base_layer(ui ui_system ref, base_layer s32) (previous_base_layer s32)
@@ -679,7 +687,12 @@ func draw_rounded_box_frame(ui ui_system ref, expand quad_info ui_quad_info, exp
     add_3x3_slice(ui, quad_info, tile_index, box.min[0] cast(s32), box.min[1] cast(s32), size[0] cast(s32), size[1] cast(s32));
 }
 
-func draw_box(ui ui_system ref, expand quad_info = ui_default_quad_info, expand box box2)
+func draw_box(ui ui_system ref, expand quad_infos ui_quad_info[4], expand box box2)
+{
+    add_quad(ui, quad_infos, box.min.x cast(s32), box.min.y cast(s32), (box.max.x - box.min.x) cast(s32), (box.max.y - box.min.y) cast(s32), ui.atlas);
+}
+
+func draw_box(ui ui_system ref, quad_info = ui_default_quad_info, expand box box2)
 {
     add_quad(ui, quad_info, box.min.x cast(s32), box.min.y cast(s32), (box.max.x - box.min.x) cast(s32), (box.max.y - box.min.y) cast(s32), ui.atlas);
 }
@@ -696,7 +709,7 @@ func draw_rounded_box_frame(ui ui_system ref, layer s32 = 0, saturation = 1.0, c
 }
 
 // TODO: if a default value is provided to an expand argument, use the default value per field for every skipped field
-func draw_box(ui ui_system ref, layer s32 = 0, saturation = 1.0, color = rgba8_white, expand box box2)
+func draw_box(ui ui_system ref, layer s32, saturation = 1.0, color = rgba8_white, expand box box2)
 {
     draw_box(ui, { layer, saturation, color } ui_quad_info, box);
 }
@@ -811,9 +824,15 @@ func ui_window(ui ui_system ref, platform platform_api ref, window platform_wind
     }
     else if box_is_hot(ui, ui.scissor_box)
     {
-        ui.cursor_left_active   = platform_key_was_pressed(platform, platform_key.mouse_left) cast(u8);
-        ui.cursor_middle_active = platform_key_was_pressed(platform, platform_key.mouse_middle) cast(u8);
-        ui.cursor_right_active = platform_key_was_pressed(platform, platform_key.mouse_right) cast(u8);
+        ui.cursor_left_active   = platform_key_is_active(platform, platform_key.mouse_left) cast(u8);
+        ui.cursor_middle_active = platform_key_is_active(platform, platform_key.mouse_middle) cast(u8);
+        ui.cursor_right_active  = platform_key_is_active(platform, platform_key.mouse_right) cast(u8);
+    }
+    else
+    {
+        ui.cursor_left_active   = 0;
+        ui.cursor_middle_active = 0;
+        ui.cursor_right_active  = 0;
     }
 
     ui.current_box = {} box2;
@@ -1061,7 +1080,7 @@ func print(ui ui_system ref, expand quad_info ui_quad_info, font ui_font, cursor
             box.max = box.min + [ glyph.width, font.info.max_glyph_height ] vec2;
             ui.current_box = merge(ui.current_box, box);
         }
-    }    
+    }
 
     cursor deref = iterator.cursor;
 }
@@ -1101,7 +1120,7 @@ func print_aligned(ui ui_system ref, layer s32 = 0, saturation = 1.0, color = rg
 }
 
 func print_aligned(ui ui_system ref, quad_info ui_quad_info, font ui_font, expand position vec2, expand alignment = [ 0.5, 0.5 ] vec2, format string, expand arguments = {} lang_typed_value[]) (box box2)
-{    
+{
     var align_state = draw_aligned_begin(ui, position, alignment);
 
     print(ui, quad_info, font, {} vec2, format, arguments);
@@ -1160,7 +1179,7 @@ func draw_aligned_begin(ui ui_system ref, expand position vec2, expand alignment
     state.position = position;
     state.alignment = alignment;
     state.previous_command_count = ui.quad_command_count;
-    
+
     // ignore scissor_box
     state.previous_scissor_box = ui.scissor_box;
     ui.scissor_box = [ [ -100000.0, -100000.0 ] vec2, [ 100000.0, 100000.0 ] vec2 ] box2;
@@ -1223,10 +1242,10 @@ func draw_aligned_end(ui ui_system ref, state ui_draw_aligned_state) (box box2)
     }
 
     // debug
-    //draw_box_lines(ui, box, [ 255, 0, 0, 255 ] rgba8, 2);
-    //draw_box_lines(ui, [ state.position -5, state.position + 5 ] box2, [ 0, 0, 255, 255 ] rgba8, 2);
+    // draw_box_lines(ui, 100, 1.0, [ 255, 0, 0, 255 ] rgba8, box, 2);
+    // draw_box_lines(ui, 100, 1.0, [ 0, 0, 255, 255 ] rgba8, [ state.position -5, state.position + 5 ] box2, 2);
 
-    ui.current_box = box;    
+    ui.current_box = box;
     draw_box_end(ui, state.previous_print_box);
 
     return box;
@@ -1276,6 +1295,7 @@ func apply_letterbox_canvas(ui ui_system ref, canvas_box box2)
 {
     ui.viewport_size = get_size(canvas_box);
     ui.cursor -= canvas_box.min;
+    clear_sissor_box(ui);
 }
 
 func draw_letterbox_border(ui ui_system ref, expand quad_info = { 0x7FFFFFFF, 1.0, [ 20, 20, 20, 255 ] rgba8 } ui_quad_info, canvas_box box2)

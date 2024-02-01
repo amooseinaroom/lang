@@ -32,6 +32,8 @@ type vec4 union
     rgb vec3;
 };
 
+type rgbaf32 vec4;
+
 func vec4_expand(vector vec3, w = 0.0) (result vec4)
 {
     var result = [ vector[0], vector[1], vector[2], w ] vec4;

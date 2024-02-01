@@ -339,7 +339,9 @@ func load(animation tk_mesh_animation ref, mesh tk_mesh, pack tk_animation_pack,
 }
 
 func blend(state tk_mesh_animation_state ref, animation tk_mesh_animation, time f32, weight f32 = 1.0, do_loop b8)
-{
+{	
+	time = fmod(time, (animation.frames_per_second * animation.frame_count) cast(f32));
+
 	var frame_index_f32 = time * animation.frames_per_second;
     var frame_index = floor(frame_index_f32) cast(u32);    
 	var frame_blend = frame_index_f32 - frame_index;

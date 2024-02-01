@@ -101,6 +101,13 @@ game.random = platform_get_random_from_time(platform ref);
 game.next_piece = make_random_piece(game.random ref, game.board[0].count, game.board.count);
 next_piece(game ref);
 
+// TEMP export piece info
+loop var type = piece_type.empty + 1; piece_type.count
+{
+    var piece = make_piece(type, 10, 24);
+    print("\n% % %", type, piece.center_times_2.x * 0.5, piece.center_times_2.x * 0.5);
+}
+
 var jiggle_time f32;
 
 while platform_handle_messages(platform ref)

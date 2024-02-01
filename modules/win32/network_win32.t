@@ -255,10 +255,10 @@ func platform_network_connect_begin platform_network_connect_begin_type
     var is_non_blocking u32 = 1;
     ioctlsocket(handle, FIONBIO, is_non_blocking ref);    
 
-    var address sockaddr_in;
-    address.sin_family      = AF_INET;
-    address.sin_addr.s_addr = ip.u32_value;
-    address.sin_port        = htons(port);
+    var address_in sockaddr_in;
+    address_in.sin_family      = AF_INET;
+    address_in.sin_addr.s_addr = address.ip.u32_value;
+    address_in.sin_port        = htons(address.port);
     if connect(handle, address ref cast(sockaddr ref), type_byte_count(sockaddr_in)) is SOCKET_ERROR
     {
         var error = WSAGetLastError();
@@ -273,8 +273,8 @@ func platform_network_connect_begin platform_network_connect_begin_type
     
     var result platform_network_socket;
     result.handle = handle;
-    result.ip     = ip;
-    result.port   = port;
+    result.ip     = address.ip;
+    result.port   = address.port;
 
     return true, result;
 }
@@ -376,17 +376,17 @@ func platform_network_send platform_network_send_type
         }
     }
     
-    var address sockaddr_in;
+    var address_in sockaddr_in;
     var send_address sockaddr ref;
     var send_address_byte_count s32;
 
-    if ip.u32_value
+    if address.ip.u32_value
     {        
-        address.sin_family      = AF_INET;
-        address.sin_addr.s_addr = ip.u32_value;
-        address.sin_port        = htons(port);
+        address_in.sin_family      = AF_INET;
+        address_in.sin_addr.s_addr = address.ip.u32_value;
+        address_in.sin_port        = htons(address.port);
 
-        send_address = address ref cast(sockaddr ref);
+        send_address = address_in ref cast(sockaddr ref);
         send_address_byte_count = type_byte_count(sockaddr_in);
     }    
 
@@ -437,8 +437,8 @@ func platform_network_receive platform_network_receive_type
         require(select(0, read_sockets ref, null, null, null) is_not SOCKET_ERROR, "WSAGetLastError(): %", WSAGetLastError());
     }
     
-    var address sockaddr_in;
-    var receive_address = address ref cast(sockaddr ref);
+    var address_in sockaddr_in;
+    var receive_address = address_in ref cast(sockaddr ref);
     var receive_address_byte_count s32 = type_byte_count(sockaddr_in);    
 
     var receive_count = recvfrom(receive_socket.handle, (buffer.base + buffer_used_byte_count deref), (buffer.count - buffer_used_byte_count deref) cast(s32), 0, receive_address, receive_address_byte_count ref);
@@ -453,8 +453,8 @@ func platform_network_receive platform_network_receive_type
     
     buffer_used_byte_count deref += receive_count cast(usize);
    
-    ip.u32_value = address.sin_addr.s_addr;                
-    port = htons(address.sin_port);
+    ip.u32_value = address_in.sin_addr.s_addr;                
+    port = htons(address_in.sin_port);
     
     return true, ip, port;
 }

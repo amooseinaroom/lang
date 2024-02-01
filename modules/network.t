@@ -43,19 +43,24 @@ func platform_network_shutdown_type(network platform_network ref);
 func platform_network_is_valid_type(test_socket platform_network_socket) (ok b8);
 func platform_network_listen_type(network platform_network ref, port u16, connection_count u32) (result platform_network_socket);
 func platform_network_accept_type(network platform_network ref, listen_socket platform_network_socket ref, timeout_milliseconds = platform_network_timeout_milliseconds_block) (result platform_network_socket);
-func platform_network_connect_begin_type(network platform_network ref, ip platform_network_ip, port u16) (ok b8, connect_socket platform_network_socket);
+func platform_network_connect_begin_type(network platform_network ref, expand address platform_network_address) (ok b8, connect_socket platform_network_socket);
 func platform_network_connect_end_type(network platform_network ref, connect_socket platform_network_socket ref, timeout_milliseconds = platform_network_timeout_milliseconds_block) (ok b8);
-func platform_network_connect_type(network platform_network ref, ip platform_network_ip, port u16, timeout_milliseconds = platform_network_timeout_milliseconds_block) (ok b8, connect_socket platform_network_socket);
+func platform_network_connect_type(network platform_network ref, expand address platform_network_address, timeout_milliseconds = platform_network_timeout_milliseconds_block) (ok b8, connect_socket platform_network_socket);
 func platform_network_disconnect_type(network platform_network ref, connect_socket platform_network_socket ref, timeout_milliseconds = platform_network_timeout_milliseconds_block) (ok b8);
 func platform_network_bind_type(network platform_network ref, port u16 = 0) (udp_socket platform_network_socket);
-func platform_network_send_type(network platform_network ref, send_socket platform_network_socket, ip = {} platform_network_ip, port u16 = 0, data u8[], timeout_milliseconds = platform_network_timeout_milliseconds_block) (ok b8);
-func platform_network_receive_type(network platform_network ref, receive_socket platform_network_socket, buffer u8[], buffer_used_byte_count usize ref, timeout_milliseconds = platform_network_timeout_milliseconds_block) (ok b8, ip platform_network_ip, port u16);
+func platform_network_send_type(network platform_network ref, send_socket platform_network_socket, address = {} platform_network_address, data u8[], timeout_milliseconds = platform_network_timeout_milliseconds_block) (ok b8);
+func platform_network_receive_type(network platform_network ref, receive_socket platform_network_socket, buffer u8[], buffer_used_byte_count usize ref, timeout_milliseconds = platform_network_timeout_milliseconds_block) (ok b8, address platform_network_address);
 
 func platform_network_connect platform_network_connect_type
 {
-    var result = platform_network_connect_begin(network, ip, port);                
+    var result = platform_network_connect_begin(network, address);                
     if not result.ok or not platform_network_connect_end(network, result.connect_socket ref, timeout_milliseconds)
         return false, {} platform_network_socket;
 
     return true, result.connect_socket;
+}
+
+func is(left platform_network_address, right platform_network_address) (ok b8)
+{
+    return (left.ip.u32_value is right.ip.u32_value) and (left.port is right.port);
 }
