@@ -52,6 +52,7 @@ struct default_program_state
 
     font ui_font;
 
+
     random random_pcg;
 
     letterbox_width_over_heigth f32;
@@ -140,14 +141,14 @@ func program_init program_init_type export
     init(state.ui ref, platform, gl);
     init(state.im ref, platform, gl);
 
+    state.memory_reload_used_byte_count = temporary_begin(memory);
+
     init(state.font ref,  platform, memory, tmemory, "C:/windows/fonts/consola.ttf", 24, 1024);
 
     state.random = platform_get_random_from_time(platform);
 
     init(state.camera ref, { 0, 3, 3 } vec3, {} vec3);
     state.debug_camera = state.camera;
-
-    state.memory_reload_used_byte_count = temporary_begin(memory);
 
     var worker_threads = state.worker_threads ref;
     worker_threads.thread_count = platform.logical_cpu_count - 1;

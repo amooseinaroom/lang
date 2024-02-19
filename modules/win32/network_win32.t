@@ -445,6 +445,9 @@ func platform_network_receive platform_network_receive_type
     if receive_count is SOCKET_ERROR
     {
         var error = WSAGetLastError();
+        // with UDP, we don't have connections that could fail,
+        // but win32 will indicate if a udp "connection" is lost running locally
+        // UDP sockets can just ignore ok value :(    
         if (error is WSAECONNRESET) or (error is WSAECONNABORTED)
             return false, ip, port;
         

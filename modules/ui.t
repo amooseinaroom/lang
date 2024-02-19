@@ -592,7 +592,7 @@ func add_quad(ui ui_system ref, expand quad_infos ui_quad_info[4], x s32, y s32,
         ui.quad_command_count -= 1;
         return;
     }
-    
+
     loop var i; quad_infos.count - 1
         assert(quad_infos[i].layer is quad_infos[i + 1].layer);
 
@@ -722,7 +722,7 @@ func draw_texture(ui ui_system ref, expand quad_info = ui_default_quad_info, tex
     add_quad(ui, quad_info, position.x cast(s32), position.y cast(s32), size.width cast(s32), size.height cast(s32), texture, 0, 0, texture.width, texture.height);
 }
 
-func draw_texture_box(ui ui_system ref, expand quad_info = ui_default_quad_info, texture gl_texture, expand position vec2, texture_box box2, expand alignment = [ 0, 0 ] vec2, texture_scale = [ 1, 1 ] vec2)
+func draw_texture_box(ui ui_system ref, expand quad_info = ui_default_quad_info, texture gl_texture, expand position vec2, texture_box box2, expand alignment = [ 0, 0 ] vec2, texture_scale = [ 1, 1 ] vec2, flip_x = false, flip_y = false)
 {
     assert(texture_box.min.x >= 0);
     assert(texture_box.min.y >= 0);
@@ -733,6 +733,22 @@ func draw_texture_box(ui ui_system ref, expand quad_info = ui_default_quad_info,
 
     var size = scale(box_size, texture_scale);
     position -= scale(alignment, size);
+
+    if flip_x
+    {
+        var temp = texture_box.min.x;
+        texture_box.min.x = texture_box.max.x;
+        texture_box.max.x = temp;
+        box_size.width = -box_size.width;
+    }
+
+    if flip_y
+    {
+        var temp = texture_box.min.y;
+        texture_box.min.y = texture_box.max.y;
+        texture_box.max.y = temp;
+        box_size.height = -box_size.height;
+    }
 
     add_quad(ui, quad_info, position.x cast(s32), position.y cast(s32), size.width cast(s32), size.height cast(s32), texture, texture_box.min.x cast(s32), texture_box.min.y cast(s32), box_size.width cast(s32), box_size.height cast(s32));
 }
