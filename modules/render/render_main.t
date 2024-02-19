@@ -32,6 +32,7 @@ multiline_comment
 // can be overridden
 def camera_fov = 0.5;
 def game_settings_path = "settings.bin";
+def use_render_system = true;
 
 struct default_program_state
 {
@@ -51,7 +52,6 @@ struct default_program_state
     camera fly_camera;
 
     font ui_font;
-
 
     random random_pcg;
 
@@ -220,7 +220,8 @@ func program_update program_update_type export
 		// HACK:
 		platform_win32_ticks_per_second = platform.win32.ticks_per_second;
 
-		reload(state.render ref, platform, gl, tmemory);
+        if use_render_system
+		    reload(state.render ref, platform, gl, tmemory);
 
         // FIX THIS
         platform_win32 = platform;
@@ -284,21 +285,24 @@ func program_update program_update_type export
     if lang_debug and state.debug_is_active
         print(ui, 0, font, 0, ui.viewport_size.height - 20, "fps: %, debug: %", 1 / delta_seconds, state.debug_is_active);
 
-    frame(state.render ref, gl, window_size);
+    if use_render_system
+    {
+        frame(state.render ref, gl, window_size);
 
-    // reset lights
-    state.render.lighting = {} render_lighting_buffer;
-    state.render.light_count = 0;
+        // reset lights
+        state.render.lighting = {} render_lighting_buffer;
+        state.render.light_count = 0;
 
-    // reset command buffer
-    var buffer = state.render.buffer ref;
-    buffer.counts = {} render_buffer_counts;
+        // reset command buffer
+        var buffer = state.render.buffer ref;
+        buffer.counts = {} render_buffer_counts;
 
-    var pass = push_pass(buffer);
-    pass.framebuffer_handle = state.render.default_framebuffer.handle;
-    pass.framebuffer_size   = window_size;
-    pass.clear_depth = 1;
-    pass.enable_clear_depth = true;
+        var pass = push_pass(buffer);
+        pass.framebuffer_handle = state.render.default_framebuffer.handle;
+        pass.framebuffer_size   = window_size;
+        pass.clear_depth = 1;
+        pass.enable_clear_depth = true;
+    }
 
     // needs to be defined by user: func game_update program_update_type { ... }
     game_update(platform, state, library_was_reloaded, state_byte_count);
@@ -332,17 +336,22 @@ func program_update program_update_type export
 
         glClear(GL_COLOR_BUFFER_BIT bit_or GL_DEPTH_BUFFER_BIT);
 
-        upload_buffers(state.render ref, gl, buffer, tmemory);
-
         glEnable(GL_FRAMEBUFFER_SRGB);
 
-        execute(state.render ref, gl, buffer, camera_to_world, world_to_clip, clip_to_world);
-
+        if use_render_system
         {
-            bind_framebuffer(gl, 0);
-            var size = get_size(letterbox);
-            glViewport(letterbox.min.x cast(s32), letterbox.min.y cast(s32), size.width cast(s32), size.height cast(s32));
-            glScissor (letterbox.min.x cast(s32), letterbox.min.y cast(s32), size.width cast(s32), size.height cast(s32));
+            var buffer = state.render.buffer ref;
+
+            upload_buffers(state.render ref, gl, buffer, tmemory);
+
+            execute(state.render ref, gl, buffer, camera_to_world, world_to_clip, clip_to_world);
+
+            {
+                bind_framebuffer(gl, 0);
+                var size = get_size(letterbox);
+                glViewport(letterbox.min.x cast(s32), letterbox.min.y cast(s32), size.width cast(s32), size.height cast(s32));
+                glScissor (letterbox.min.x cast(s32), letterbox.min.y cast(s32), size.width cast(s32), size.height cast(s32));
+            }
         }
 
         if state.debug_is_active
