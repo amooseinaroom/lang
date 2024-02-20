@@ -18,16 +18,16 @@ func ntohs(value u16) (result u16)
     return htons(value);
 }
 
-type platform_network_ip union 
+type platform_network_ip union
 {
     expand u8_values u8[4];
     expand u32_value u32;
 };
 
 struct platform_network_address
-{       
+{
     ip   platform_network_ip;
-    port u16;    
+    port u16;
 }
 
 struct platform_network_socket_base
@@ -50,10 +50,11 @@ func platform_network_disconnect_type(network platform_network ref, connect_sock
 func platform_network_bind_type(network platform_network ref, port u16 = 0) (udp_socket platform_network_socket);
 func platform_network_send_type(network platform_network ref, send_socket platform_network_socket, address = {} platform_network_address, data u8[], timeout_milliseconds = platform_network_timeout_milliseconds_block) (ok b8);
 func platform_network_receive_type(network platform_network ref, receive_socket platform_network_socket, buffer u8[], buffer_used_byte_count usize ref, timeout_milliseconds = platform_network_timeout_milliseconds_block) (ok b8, address platform_network_address);
+func platform_network_query_dns_ip_type(network platform_network ref, name string) (ok b8, ip platform_network_ip);
 
 func platform_network_connect platform_network_connect_type
 {
-    var result = platform_network_connect_begin(network, address);                
+    var result = platform_network_connect_begin(network, address);
     if not result.ok or not platform_network_connect_end(network, result.connect_socket ref, timeout_milliseconds)
         return false, {} platform_network_socket;
 
