@@ -46,6 +46,7 @@ def WSAECONNABORTED    = 10053 cast(s32);
 def WSAECONNRESET      = 10054 cast(s32);
 def WSAETIMEDOUT       = 10060 cast(s32);
 def WSAECONNREFUSED    = 10061 cast(s32);
+def WSAEMSGSIZE        = 10040 cast(s32);
 
 def AF_INET    = 2 cast(u16);
 def INADDR_ANY = 0 cast(u32);
@@ -458,10 +459,14 @@ func platform_network_receive platform_network_receive_type
     if receive_count is SOCKET_ERROR
     {
         var error = WSAGetLastError();
-        // with UDP, we don't have connections that could fail,
+
+        // with UDP, we don nonet have connections that could fail,
         // but win32 will indicate if a udp "connection" is lost running locally
         // UDP sockets can just ignore ok value :(
-        if (error is WSAECONNRESET) or (error is WSAECONNABORTED)
+
+        // HACK: WSAEMSGSIZE indicates buffer is too small, we drop those messages
+        switch error
+        case WSAECONNRESET, WSAECONNABORTED, WSAEMSGSIZE
             return false, ip, port;
 
         require(false, "recv(socket.handle, (buffer.base + byte_offset deref), (buffer.count - byte_offset deref) cast(s32), 0) failed with WSAGetLastError(): %", error);
