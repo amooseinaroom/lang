@@ -784,7 +784,11 @@ func platform_local_timestamp_milliseconds platform_local_timestamp_milliseconds
     var filetime FILETIME;
     GetSystemTimeAsFileTime(filetime ref);
 
-    return filetime ref cast(u64 ref) deref;
+    // FILETIME is a multiple of 100 nanosecconds
+    // 1ms = 1.000.000ns
+    var milliseconds = (filetime ref cast(u64 ref) deref) / 10000;
+
+    return milliseconds;
 }
 
 func platform_local_date_and_time platform_local_date_and_time_type
