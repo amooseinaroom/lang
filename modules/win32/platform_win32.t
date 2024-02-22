@@ -779,6 +779,14 @@ func platform_get_random_from_time platform_get_random_from_time_type
     return random;
 }
 
+func platform_local_timestamp_milliseconds platform_local_timestamp_milliseconds_type
+{
+    var filetime FILETIME;
+    GetSystemTimeAsFileTime(filetime ref);
+
+    return filetime ref cast(u64 ref) deref;
+}
+
 func platform_local_date_and_time platform_local_date_and_time_type
 {
     var time SYSTEMTIME;
@@ -959,7 +967,7 @@ func platform_file_search_init platform_file_search_init_type
     {
         if relative_path_pattern[i] is "/"[0]
             relative_path_prefix.count = i + 1;
-        
+
         // COMPILER BUG: quotes in expression text is not escaped
         def slash = "\\"[0];
         assert(relative_path_pattern[i] is_not slash);
@@ -995,15 +1003,15 @@ func platform_file_search_next platform_file_search_next_type
     {
         // copy, since we will free it
         iterator.found_file.relative_path = write(iterator.found_file.relative_path_buffer, "%", iterator.relative_path_prefix);
-        
+
         // remove trailing '/' if any
-        if iterator.found_file.relative_path.count                    
+        if iterator.found_file.relative_path.count
             iterator.found_file.relative_path.count -= 1;
     }
     else
     {
         var file_name = as_string(iterator.win32.find_data.cFileName.base cast(cstring));
-        
+
         iterator.found_file.relative_path = write(iterator.found_file.relative_path_buffer, "%%", iterator.relative_path_prefix, file_name);
 
         loop var i u32; iterator.found_file.relative_path.count

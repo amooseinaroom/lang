@@ -65,6 +65,7 @@ func platform_cpu_cycle_counter_type() (counter u64);
 func platform_highest_bit_index_type(mask u32) (bit_index u32);
 
 func platform_get_executable_name_type(platform platform_api ref, buffer u8[]) (name string);
+func platform_local_timestamp_milliseconds_type(platform platform_api ref) (milliseconds u64);
 func platform_local_date_and_time_type(platform platform_api ref) (date_and_time platform_date_and_time);
 
 // platform_api should be expanding on this
@@ -114,7 +115,7 @@ struct platform_file_search_iterator_base
         relative_path_buffer u8[platform_max_path_count];
         absolute_path        string;
         relative_path        string;
-        is_directory         b8;        
+        is_directory         b8;
     };
 }
 

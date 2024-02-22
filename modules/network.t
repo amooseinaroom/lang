@@ -65,3 +65,8 @@ func is(left platform_network_address, right platform_network_address) (ok b8)
 {
     return (left.ip.u32_value is right.ip.u32_value) and (left.port is right.port);
 }
+
+func is_not(left platform_network_address, right platform_network_address) (ok b8)
+{
+    return not (left is right);
+}
