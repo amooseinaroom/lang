@@ -883,6 +883,10 @@ func write(buffer u8[], settings = default_string_builder_settings, format strin
 func write(memory memory_arena ref, text string ref, settings = default_string_builder_settings, format string, location = get_call_location(), expand values lang_typed_value[]) (text string)
 {
     var sub_text = allocate_text(memory, settings, format, location, values);
+
+    if not sub_text.count
+        sub_text.base = text.base + text.count;
+
     text.count += sub_text.count;
     text.base = sub_text.base + sub_text.count - text.count;
 
@@ -1306,31 +1310,31 @@ func edit_text(text editable_text ref, characters platform_character[] ref) (res
 func split_path(path string) (directory string, name string, extension string)
 {
     var directory = { 0, path.base } string;
-    
+
     while path.count
     {
         var count = try_skip_until(path ref, "/", true, false).count;
         if not count
             break;
-    
+
         directory.count += count;
     }
-    
+
     // exlude last "/"
     if directory.count
         directory.count -= 1;
-    
+
     var name = { 0, path.base } string;
-    
+
     while path.count
     {
         var count = try_skip_until(path ref, ".", true, false).count;
         if not count
             break;
-    
+
         name.count += count;
     }
-    
+
     if not name.count
     {
         name = path;
@@ -1340,9 +1344,9 @@ func split_path(path string) (directory string, name string, extension string)
     {
         name.count -= 1; // remove .
     }
-        
+
     var extension = path;
-    
+
     return directory, name, extension;
 }
 
@@ -1395,7 +1399,7 @@ func latin_to_lower_case(text string)
     loop var i usize; text.count
     {
         var letter = text[i];
-        if (letter >= "A"[0]) and (letter <= "Z"[0])        
-            text[i] = text[i] - "A"[0] + "a"[0];        
+        if (letter >= "A"[0]) and (letter <= "Z"[0])
+            text[i] = text[i] - "A"[0] + "a"[0];
     }
 }
