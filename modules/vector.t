@@ -271,6 +271,11 @@ func maximum(a vec2, b vec2) (result vec2)
     return [ maximum(a[0], b[0]), maximum(a[1], b[1]) ] vec2;
 }
 
+func clamp(a vec2, min vec2, max vec2) (result vec2)
+{
+    return [ clamp(a[0], min[0], max[0]), clamp(a[1], min[1], max[1]) ] vec2;
+}
+
 func floor(vector vec2) (result vec2)
 {
     return [ floor(vector.x), floor(vector.y) ] vec2;

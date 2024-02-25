@@ -56,7 +56,12 @@ func get_intersection(a box2, b box2) (ok b8, intersection box2)
 func intersects(a box2, b box2) (result b8)
 {
     return not ((a.min.x >= b.max.x) or (b.min.x >= a.max.x) or (a.min.y >= b.max.y) or (b.min.y >= a.max.y));
-    //return (a.max.x < b.min.x) and (b.max.x < a.min.x) and (a.max.y < b.min.y) and (b.max.y < a.min.y);
+    // return (a.max.x < b.min.x) and (b.max.x < a.min.x) and (a.max.y < b.min.y) and (b.max.y < a.min.y);
+}
+
+func is_contained(point vec2, box box2) (ok b8)
+{
+    return ((box.min.x <= point.x) and (point.x < box.max.x) and (box.min.y <= point.y) and (point.y < box.max.y));
 }
 
 func move(box box2, offset vec2) (result box2)
