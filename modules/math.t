@@ -273,7 +273,21 @@ func apply_spring(current f32, target f32, strength f32, delta_seconds f32) (nex
 func apply_spring(current vec2, target vec2, strength f32, delta_seconds f32) (next vec2)
 {
     var delta = target - current;
-    current += delta * (strength * 0.5 * delta_seconds * delta_seconds);
+    var factor = strength * 0.5 * delta_seconds * delta_seconds;
+    current += delta * factor;
+
+    return current;
+}
+
+func apply_spring_without_overshoot(current vec2, target vec2, strength f32, delta_seconds f32) (next vec2)
+{
+    var delta = target - current;
+    var factor = strength * 0.5 * delta_seconds * delta_seconds;
+    if factor >= 1
+        current = target;
+    else
+        current += delta * factor;
+
     return current;
 }
 
