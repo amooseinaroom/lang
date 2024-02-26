@@ -55,6 +55,7 @@ enum platform_key u8
     escape    = VK_ESCAPE;
     tabulator = VK_TAB;
     delete    = VK_DELETE;
+    space     = VK_SPACE;
 
     shift   = VK_SHIFT;
     alt     = VK_MENU;
