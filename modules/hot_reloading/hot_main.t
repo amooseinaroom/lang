@@ -57,7 +57,7 @@ var state program_state ref;
 {
     var memory memory_arena;
     init(memory ref);
-    
+
     // using deref = {} prgram_state may cause a stack overflow, because MSVC has a bug for large structs
     allocate(memory ref, state ref);
     clear(value_to_u8_array(state deref));
@@ -67,7 +67,10 @@ var state program_state ref;
 // load library first, so we can better deal with remedy breakpoints
 var library program_library;
 if enable_hot_reloading
-    library = load_program_library(platform ref, program_name);
+{
+    library = try_load_program_library(platform ref, program_name);
+    require(library.platform.win32);
+}
 
 program_init(platform ref, state);
 
@@ -120,7 +123,7 @@ struct program_library
     update    program_update_type;
 }
 
-func load_program_library(platform platform_api ref, name string) (library program_library)
+func try_load_program_library(platform platform_api ref, name string) (library program_library)
 {
     var buffer u8[512];
     var dll_name = write(buffer, "%.dll", name);
@@ -130,7 +133,8 @@ func load_program_library(platform platform_api ref, name string) (library progr
     var live_index s32 = 0;
     {
         var info = platform_get_file_info(platform, dll_name);
-        require(info.ok);
+        if not info.ok
+            return {} program_library;
 
         library.timestamp = info.write_timestamp;
 
@@ -146,7 +150,8 @@ func load_program_library(platform platform_api ref, name string) (library progr
 
     var live_name = write(buffer, "live%", live_index);
     library.platform = platform_load_library(platform, live_name);
-    require(library.platform.win32);
+    if not library.platform.win32
+        return {} program_library;
 
     library.update = platform_load_symbol(platform, library.platform, "program_update") cast(program_update_type);
     require(library.update);
@@ -163,6 +168,8 @@ func try_reload_program_library(platform platform_api ref, library program_libra
 
     if info.ok and (library.timestamp is_not info.write_timestamp)
     {
+        library.timestamp = info.write_timestamp;
+
         var test_library = platform_load_library(platform, name);
         if test_library.win32
         {
@@ -171,9 +178,13 @@ func try_reload_program_library(platform platform_api ref, library program_libra
             if test_update
             {
                 platform_free_library(platform, test_library);
-                platform_free_library(platform, library.platform);
 
-                library deref = load_program_library(platform, name);
+                var new_library = try_load_program_library(platform, name);
+                if new_library.platform.win32
+                {
+                    platform_free_library(platform, library.platform);
+                    library deref = new_library;
+                }
 
                 return true;
             }

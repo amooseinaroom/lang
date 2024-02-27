@@ -434,7 +434,6 @@ func normalize(vector vec3) (result vec3)
     return vector;
 }
 
-
 func normalize_or_zero(vector vec3) (result vec3)
 {
     var vector_squared_length = squared_length(vector);
