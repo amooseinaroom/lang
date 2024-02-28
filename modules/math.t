@@ -297,3 +297,41 @@ func apply_spring(current vec3, target vec3, strength f32, delta_seconds f32) (n
     current += delta * (strength * 0.5 * delta_seconds * delta_seconds);
     return current;
 }
+
+func linear_to_srgb(value f32) (result f32)
+{
+    if value <= 0.0031308
+        return value * 12.92;
+    else
+        return pow(value, 1.0 / 2.4) * 1.055 - 0.055;
+}
+
+func srgb_to_linear(value f32) (result f32)
+{
+    if value <= 0.04045
+        return value / 12.92;
+    else
+       return pow((value + 0.055) / 1.055, 2.4);
+}
+
+func linear_to_srgb(rgb vec3) (srbg vec3)
+{
+    return [ linear_to_srgb(rgb.r), linear_to_srgb(rgb.g), linear_to_srgb(rgb.b) ] vec3;
+}
+
+func srgb_to_linear(srgb vec3) (srbg vec3)
+{
+    return [ srgb_to_linear(srgb.r), srgb_to_linear(srgb.g), srgb_to_linear(srgb.b) ] vec3;
+}
+
+func linear_to_srgb(rgba vec4) (srbga vec4)
+{
+    rgba.rgb = linear_to_srgb(rgba.rgb);
+    return rgba;
+}
+
+func srgb_to_linear(srgba vec4) (rbga vec4)
+{
+    srgba.rgb = srgb_to_linear(srgba.rgb);
+    return srgba;
+}

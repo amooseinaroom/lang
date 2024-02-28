@@ -261,6 +261,16 @@ func lerp(from vec2, to vec2, ratio f32) (result vec2)
     return lerp(from, to, [ ratio, ratio ] vec2);
 }
 
+func slerp(from vec2, to vec2, ratio f32) (result vec2)
+{
+    // var from_normal = rotate_counter_clockwise(from);
+    var angle = acos(dot(from, to));
+    var one_over_sin_angle = 1.0 / sin(angle);
+
+    var result = ((from * (sin(1 - ratio) * angle)) + (to * sin(ratio * angle))) * one_over_sin_angle;
+    return result;
+}
+
 func minimum(a vec2, b vec2) (result vec2)
 {
     return [ minimum(a[0], b[0]), minimum(a[1], b[1]) ] vec2;
