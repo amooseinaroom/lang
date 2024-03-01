@@ -51,6 +51,7 @@ struct default_program_state
     window platform_window;
     camera fly_camera;
 
+    font_memory memory_arena;
     font ui_font;
 
     random random_pcg;
@@ -143,7 +144,8 @@ func program_init program_init_type export
 
     state.memory_reload_used_byte_count = temporary_begin(memory);
 
-    init(state.font ref,  platform, memory, tmemory, "C:/windows/fonts/consola.ttf", 24, 1024);
+    init(state.font_memory ref);
+    init(state.font ref, platform, state.font_memory ref, tmemory, "C:/windows/fonts/consola.ttf", 24, 1024);
 
     state.random = platform_get_random_from_time(platform);
 
