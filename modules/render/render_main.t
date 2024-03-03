@@ -27,12 +27,24 @@ multiline_comment
     func game_update program_update_type
     {
     }
+
+    // optionally 
+    // override func game_render game_render_type
+    // {
+    // }
 }
+
+func game_render_type(platform platform_api ref, state program_state ref);
 
 // can be overridden
 def camera_fov = 0.5;
 def game_settings_path = "settings.bin";
 def use_render_system = true;
+
+// can be overridden
+func game_render game_render_type
+{
+}
 
 struct default_program_state
 {
@@ -360,6 +372,8 @@ func program_update program_update_type export
             im_present(im, gl);
         else
             im_skip_present(im);
+
+        game_render(platform, state);
 
         ui_present(gl, ui);
 
