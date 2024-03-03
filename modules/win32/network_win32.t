@@ -162,8 +162,8 @@ struct timeval
 
 struct platform_network_socket
 {
-    expand base platform_network_address;
-    handle SOCKET;
+    expand base   platform_network_socket_base;
+           handle SOCKET;
 }
 
 struct platform_network
@@ -210,8 +210,8 @@ func platform_network_listen platform_network_listen_type
     require( listen(listen_socket, SOMAXCONN_HINT(connection_count)) is_not SOCKET_ERROR, "WSAGetLastError(): %i", WSAGetLastError() );
 
     var result platform_network_socket;
-    result.handle = listen_socket;
-    result.port  = port;
+    result.handle       = listen_socket;
+    result.address.port = port;
 
     return result;
 }
@@ -246,8 +246,8 @@ func platform_network_accept platform_network_accept_type
 
     var result platform_network_socket;
     result.handle       = accepted_socket;
-    result.ip.u32_value = address.sin_addr.s_addr;
-    result.port         = ntohs(address.sin_port);
+    result.address.ip.u32_value = address.sin_addr.s_addr;
+    result.address.port         = ntohs(address.sin_port);
 
     return result;
 }
@@ -278,8 +278,8 @@ func platform_network_connect_begin platform_network_connect_begin_type
 
     var result platform_network_socket;
     result.handle = handle;
-    result.ip     = address.ip;
-    result.port   = address.port;
+    result.address.ip     = address.ip;
+    result.address.port   = address.port;
 
     return true, result;
 }
@@ -351,10 +351,18 @@ func platform_network_bind platform_network_bind_type
     }
 
     var result platform_network_socket;
+    result.is_udp = true;
     result.handle = handle;
-    result.port   = port;
+    result.address.port   = port;
 
     return result;
+}
+
+func platform_network_unbind platform_network_unbind_type
+{
+    assert(udp_socket.is_udp);
+    require(not closesocket(udp_socket.handle), "WSA Error Code: %", WSAGetLastError());
+    udp_socket deref = {} platform_network_socket;
 }
 
 func platform_network_send platform_network_send_type
@@ -409,12 +417,16 @@ func platform_network_send platform_network_send_type
     if send_count is SOCKET_ERROR
     {
         var error = WSAGetLastError();
-        // TODO: WSAWOULDBLOCK can still occur for non blocking sockets, even when select says it is ready
-        if (error is WSAECONNRESET) or (error is WSAECONNABORTED) or (error is WSAWOULDBLOCK)
+        switch error
+        case WSAECONNRESET, WSAECONNABORTED
             return false;
+        // TODO: WSAWOULDBLOCK can still occur for non blocking sockets, even when select says it is ready
+        case WSAWOULDBLOCK
+            return true;
 
         require(false, "send(socket.handle, data.base, data.count cast(s32), 0) failed with WSAGetLastError(): %", error);
     }
+
     assert(send_count cast(usize) is data.count);
 
     return true;
@@ -425,9 +437,6 @@ func platform_network_receive platform_network_receive_type
     var read_sockets fd_set;
     FD_SET(receive_socket.handle, read_sockets ref);
 
-     var ip platform_network_ip;
-     var port u16;
-
     if timeout_milliseconds is_not platform_network_timeout_milliseconds_block
     {
         var timeout timeval;
@@ -437,13 +446,13 @@ func platform_network_receive platform_network_receive_type
 
         // timeout, return nothing
         if not result
-            return true, ip, port;
+            return true, false, {} platform_network_address;
 
         if result is SOCKET_ERROR
         {
             var error = WSAGetLastError();
             if error is WSAEINPROGRESS
-                return true, ip, port;
+                return true, false, {} platform_network_address;
 
             require(false, "select(0, read_sockets ref, null, null, timeout ref) failed with WSAGetLastError(): %", error);
         }
@@ -452,6 +461,8 @@ func platform_network_receive platform_network_receive_type
     {
         require(select(0, read_sockets ref, null, null, null) is_not SOCKET_ERROR, "WSAGetLastError(): %", WSAGetLastError());
     }
+
+    buffer_used_byte_count deref = 0;
 
     var address_in sockaddr_in;
     var receive_address = address_in ref cast(sockaddr ref);
@@ -466,20 +477,27 @@ func platform_network_receive platform_network_receive_type
         // but win32 will indicate if a udp "connection" is lost running locally
         // UDP sockets can just ignore ok value :(
 
-        // HACK: WSAEMSGSIZE indicates buffer is too small, we drop those messages
         switch error
-        case WSAECONNRESET, WSAECONNABORTED, WSAEMSGSIZE
-            return false, ip, port;
+        // HACK: udp sockets ignore this message
+        case WSAECONNRESET, WSAECONNABORTED
+            return receive_socket.is_udp, receive_socket.is_udp, {} platform_network_address;
+        // HACK: WSAEMSGSIZE indicates buffer is too small, we drop those messages
+        case WSAEMSGSIZE
+        {
+            assert(0);
+            return true, true, {} platform_network_address;
+        }
 
         require(false, "recv(socket.handle, (buffer.base + byte_offset deref), (buffer.count - byte_offset deref) cast(s32), 0) failed with WSAGetLastError(): %", error);
     }
 
     buffer_used_byte_count deref += receive_count cast(usize);
 
-    ip.u32_value = address_in.sin_addr.s_addr;
-    port = htons(address_in.sin_port);
+    var address platform_network_address;
+    address.ip.u32_value = address_in.sin_addr.s_addr;
+    address.port = htons(address_in.sin_port);
 
-    return true, ip, port;
+    return true, true, address;
 }
 
 func platform_network_query_dns_ip platform_network_query_dns_ip_type
