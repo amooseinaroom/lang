@@ -40,13 +40,14 @@ def SO_ERROR   = 0x1007 cast(s32);
 def WSADESCRIPTION_LEN = 256;
 def WSASYS_STATUS_LEN  = 128;
 
-def WSAEINPROGRESS     = 10036 cast(s32);
-def WSAENETRESET       = 10052 cast(s32);
-def WSAECONNABORTED    = 10053 cast(s32);
-def WSAECONNRESET      = 10054 cast(s32);
-def WSAETIMEDOUT       = 10060 cast(s32);
-def WSAECONNREFUSED    = 10061 cast(s32);
-def WSAEMSGSIZE        = 10040 cast(s32);
+def WSAWOULDBLOCK   = 10035 cast(s32);
+def WSAEINPROGRESS  = 10036 cast(s32);
+def WSAEMSGSIZE     = 10040 cast(s32);
+def WSAENETRESET    = 10052 cast(s32);
+def WSAECONNABORTED = 10053 cast(s32);
+def WSAECONNRESET   = 10054 cast(s32);
+def WSAETIMEDOUT    = 10060 cast(s32);
+def WSAECONNREFUSED = 10061 cast(s32);
 
 def AF_INET    = 2 cast(u16);
 def INADDR_ANY = 0 cast(u32);
@@ -408,7 +409,8 @@ func platform_network_send platform_network_send_type
     if send_count is SOCKET_ERROR
     {
         var error = WSAGetLastError();
-        if (error is WSAECONNRESET) or (error is WSAECONNABORTED)
+        // TODO: WSAWOULDBLOCK can still occur for non blocking sockets, even when select says it is ready
+        if (error is WSAECONNRESET) or (error is WSAECONNABORTED) or (error is WSAWOULDBLOCK)
             return false;
 
         require(false, "send(socket.handle, data.base, data.count cast(s32), 0) failed with WSAGetLastError(): %", error);
