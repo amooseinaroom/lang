@@ -132,6 +132,9 @@ func init(ui ui_system ref, platform platform_api ref, gl gl_api ref)
     reload_shader(gl, ui.shader, "ui", get_type_info(ui_vertex_attribute), ui_vertex_shader_source, false, ui_fragment_shader_source);
     assert(ui.shader.diffuse_texture is_not -1);
 
+    ui.builder_settings = default_string_builder_settings;
+    ui.builder_settings.fraction_digit_count = 2;
+
     ui.atlas = gl_create_texture_2d(1024, 1024, false, {} u8[], GL_RGBA);
     ui.textures.count = 32;
     ui.quad_commands.count = 4096;
