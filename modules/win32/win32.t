@@ -531,9 +531,14 @@ def XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE  = 7849 cast(s16);
 def XINPUT_GAMEPAD_RIGHT_THUMB_DEADZONE = 8689 cast(s16);
 def XINPUT_GAMEPAD_TRIGGER_THRESHOLD    = 30 cast(u8);
 
-def DNS_TYPE_A = 1 cast(u16);
+def DNS_TYPE_A    = 0x0001 cast(u16);
+def DNS_TYPE_AAAA = 0x001c cast(u16);
 
-def DNS_QUERY_STANDARD = 0 cast(u32);
+def DNS_QUERY_STANDARD     = 0x00000000 cast(u32);
+def DNS_QUERY_BYPASS_CACHE = 0x00000008 cast(u32);
+
+// error code
+def DNS_INFO_NO_RECORDS = 0x251D cast(u32);
 
 def DnsFreeFlat                = 0 cast(u32);
 def DnsFreeRecordList          = 1 cast(u32);
@@ -542,6 +547,11 @@ def DnsFreeParsedMessageFields = 2 cast(u32);
 struct DNS_A_DATA
 {
     IpAddress u32;
+}
+
+struct DNS_AAAA_DATA
+{
+    IP6Qword u64[2];
 }
 
 struct DNS_RECORD
@@ -564,7 +574,8 @@ struct DNS_RECORD
 
     Data union
     {
-        A DNS_A_DATA;
+        A    DNS_A_DATA;
+        AAAA DNS_AAAA_DATA;
 
         values u8[56];
 
@@ -591,7 +602,6 @@ struct DNS_RECORD
                             X25;
         DNS_NULL_DATA       Null;
         DNS_WKS_DATA        WKS, Wks;
-        DNS_AAAA_DATA       AAAA;
         DNS_KEY_DATA        KEY, Key;
         DNS_SIG_DATAW       SIG, Sig;
         DNS_ATMA_DATA       ATMA, Atma;
@@ -616,6 +626,18 @@ struct DNS_RECORD
         }
     };
 }
+
+// struct DNS_QUERY_REQUEST
+// {
+//   ULONG                         Version;
+//   PCWSTR                        QueryName;
+//   WORD                          QueryType;
+//   ULONG64                       QueryOptions;
+//   PDNS_ADDR_ARRAY               pDnsServerList;
+//   ULONG                         InterfaceIndex;
+//   PDNS_QUERY_COMPLETION_ROUTINE pQueryCompletionCallback;
+//   PVOID                         pQueryContext;
+// } , *PDNS_QUERY_REQUEST;
 
 struct SYSTEM_INFO
 {

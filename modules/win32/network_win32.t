@@ -49,10 +49,15 @@ def WSAECONNRESET   = 10054 cast(s32);
 def WSAETIMEDOUT    = 10060 cast(s32);
 def WSAECONNREFUSED = 10061 cast(s32);
 
-def AF_INET    = 2 cast(u16);
+def AF_INET    = 2  cast(u16);
+def AF_INET6   = 23 cast(u16);
+
 def INADDR_ANY = 0 cast(u32);
+def IN6ADDR_ANY_INIT = [ 0, 0, 0, 0, 0, 0, 0, 0 ] u16[];
+
 def SOCK_STREAM = 1 cast(s32);              // stream socket
 def SOCK_DGRAM  = 2 cast(s32);               // datagram socket
+
 def IPPROTO_TCP = 6 cast(s32);    // tcp
 def IPPROTO_PUP = 12 cast(s32);             // pup
 def IPPROTO_UDP = 17 cast(s32);              // user datagram protocol
@@ -78,10 +83,28 @@ struct sockaddr_in
     sin_zero   u8[8];
 }
 
+struct sockaddr_in6
+{
+    sin6_family   u16;
+    sin6_port     u16;
+    sin6_flowinfo u32;
+    in6_addr      u16[8];
+    sin6_scope_id u32;
+};
+
 struct sockaddr
 {
     sa_family u16;
     sa_data   u8[14];                   // Up to 14 bytes of direct address.
+}
+
+// just don't question win32 api :(
+struct SOCKADDR_STORAGE
+{
+  ss_family  s16;
+  __ss_pad1  u8[6];
+  __ss_align s64;
+  __ss_pad2  u8[112];
 }
 
 type IN_ADDR union
@@ -198,22 +221,12 @@ func platform_network_is_valid platform_network_is_valid_type
 
 func platform_network_listen platform_network_listen_type
 {
-    var listen_socket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-    require(listen_socket is_not INVALID_SOCKET, "socket(AF_INET, SOCK_STREAM, IPPROTO_TCP) failed with Error: %i", WSAGetLastError());
+    var listen_socket = platform_network_win32_bind(network, false, address_tag, port);
 
-    var address sockaddr_in;
-    address.sin_family      = AF_INET;
-    address.sin_addr.s_addr = INADDR_ANY;
-    address.sin_port        = htons(port);
-    require( bind(listen_socket, address ref cast(sockaddr ref), type_byte_count(sockaddr_in)) is_not SOCKET_ERROR, "WSAGetLastError(): %", WSAGetLastError() );
+    var ok = listen(listen_socket.handle, SOMAXCONN_HINT(connection_count)) is_not SOCKET_ERROR;
+    require(ok, "listen(...) failed with\nWSAGetLastError(): %i", WSAGetLastError());
 
-    require( listen(listen_socket, SOMAXCONN_HINT(connection_count)) is_not SOCKET_ERROR, "WSAGetLastError(): %i", WSAGetLastError() );
-
-    var result platform_network_socket;
-    result.handle       = listen_socket;
-    result.address.port = port;
-
-    return result;
+    return listen_socket;
 }
 
 func platform_network_accept platform_network_accept_type
@@ -245,15 +258,21 @@ func platform_network_accept platform_network_accept_type
     require(accepted_socket is_not INVALID_SOCKET, "accept(listen_socket.handle, address ref cast(SOCKADDR ref), address_byte_count ref) failed with WSAGetLastError(): %", WSAGetLastError());
 
     var result platform_network_socket;
-    result.handle       = accepted_socket;
-    result.address.ip.u32_value = address.sin_addr.s_addr;
-    result.address.port         = ntohs(address.sin_port);
+    result.handle = accepted_socket;
+    result.port   = ntohs(address.sin_port);
 
-    return result;
+    var result_address platform_network_address;
+    result_address.tag             = platform_network_address_tag.ip_v4;
+    result_address.ip_v4.u32_value = address.sin_addr.s_addr;
+    result_address.port            = result.port;
+
+    return result, result_address;
 }
 
 func platform_network_connect_begin platform_network_connect_begin_type
 {
+    assert(address.tag is platform_network_address_tag.ip_v4);
+
     var handle = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     require(handle is_not INVALID_SOCKET, "socket(AF_INET, SOCK_STREAM, IPPROTO_TCP) failed with Error: %", WSAGetLastError());
 
@@ -262,7 +281,7 @@ func platform_network_connect_begin platform_network_connect_begin_type
 
     var address_in sockaddr_in;
     address_in.sin_family      = AF_INET;
-    address_in.sin_addr.s_addr = address.ip.u32_value;
+    address_in.sin_addr.s_addr = address.ip_v4.u32_value;
     address_in.sin_port        = htons(address.port);
     if connect(handle, address ref cast(sockaddr ref), type_byte_count(sockaddr_in)) is SOCKET_ERROR
     {
@@ -278,8 +297,7 @@ func platform_network_connect_begin platform_network_connect_begin_type
 
     var result platform_network_socket;
     result.handle = handle;
-    result.address.ip     = address.ip;
-    result.address.port   = address.port;
+    result.port   = address.port;
 
     return true, result;
 }
@@ -326,39 +344,87 @@ func platform_network_disconnect platform_network_disconnect_type
     return true;
 }
 
-func platform_network_bind platform_network_bind_type
+func platform_network_win32_bind(network platform_network ref, is_udp b8, address_tag platform_network_address_tag, port u16) (udp_socket platform_network_socket)
 {
-    var handle = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-    require(handle is_not INVALID_SOCKET, "socket(AF_INET, SOCK_STREAM, IPPROTO_UDP) failed with Error: %", WSAGetLastError());
+    var family s32;
+
+    var address_union SOCKADDR_STORAGE;
+    var address = address_union ref cast(sockaddr ref);
+    var address_byte_count s32;
+
+    switch address_tag
+    case platform_network_address_tag.ip_v4
+    {
+        family = AF_INET;
+
+        var address_in = address_union ref cast(sockaddr_in ref);
+        address_in.sin_family      = AF_INET;
+        address_in.sin_addr.s_addr = INADDR_ANY;
+        address_in.sin_port        = htons(port);
+
+        address_byte_count = type_byte_count(sockaddr_in);
+    }
+    case platform_network_address_tag.ip_v6
+    {
+        family = AF_INET6;
+
+        var address_in = address_union ref cast(sockaddr_in6 ref);
+        address_in.sin6_family = AF_INET6;
+        address_in.in6_addr    = IN6ADDR_ANY_INIT;
+        address_in.sin6_port   = htons(port);
+
+        address_byte_count = type_byte_count(sockaddr_in6);
+    }
+    else
+    {
+        assert(false);
+    }
+
+    var handle SOCKET;
+    if is_udp
+        handle = socket(family, SOCK_DGRAM, IPPROTO_UDP);
+    else
+        handle= socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+
+    require(handle is_not INVALID_SOCKET, "socket(...) failed with Error: %", WSAGetLastError());
 
     var is_non_blocking u32 = 1;
     ioctlsocket(handle, FIONBIO, is_non_blocking ref);
 
-    var address sockaddr_in;
-    address.sin_family      = AF_INET;
-    address.sin_addr.s_addr = INADDR_ANY;
-    address.sin_port        = htons(port);
-    require( bind(handle, address ref cast(sockaddr ref), type_byte_count(sockaddr_in)) is_not SOCKET_ERROR, "WSAGetLastError(): %", WSAGetLastError() );
+    var ok = bind(handle, address, address_byte_count) is_not SOCKET_ERROR;
+    require(ok, "WSAGetLastError(): %", WSAGetLastError());
 
     if not port
     {
-        var address_byte_count = type_byte_count(sockaddr_in) cast(s32);
-        if not getsockname(handle, address ref cast(sockaddr ref), address_byte_count ref)
+        // var address_byte_count = type_byte_count(sockaddr_in) cast(s32);
+        if not getsockname(handle, address, address_byte_count ref)
         {
-            port = htons(address.sin_port);
+            switch address_tag
+            case platform_network_address_tag.ip_v4
+                port = htons(address cast(sockaddr_in ref).sin_port);
+            case platform_network_address_tag.ip_v6
+                port = htons(address cast(sockaddr_in6 ref).sin6_port);
+
             assert(port);
         }
     }
 
     var result platform_network_socket;
-    result.is_udp = true;
+    result.address_tag = address_tag;
+    result.port   = port;
     result.handle = handle;
-    result.address.port   = port;
+    result.is_udp = is_udp;
 
     return result;
 }
 
-func platform_network_unbind platform_network_unbind_type
+func platform_network_peer_open platform_network_peer_open_type
+{
+    var bind_socket = platform_network_win32_bind(network, true, address_tag, port);
+    return bind_socket;
+}
+
+func platform_network_peer_close platform_network_peer_close_type
 {
     assert(udp_socket.is_udp);
     require(not closesocket(udp_socket.handle), "WSA Error Code: %", WSAGetLastError());
@@ -367,6 +433,7 @@ func platform_network_unbind platform_network_unbind_type
 
 func platform_network_send platform_network_send_type
 {
+    assert(send_socket.address_tag is address.tag);
     var write_sockets fd_set;
     FD_SET(send_socket.handle, write_sockets ref);
 
@@ -399,18 +466,30 @@ func platform_network_send platform_network_send_type
         }
     }
 
-    var address_in sockaddr_in;
-    var send_address sockaddr ref;
+    var address_union SOCKADDR_STORAGE;
+    var send_address = address_union ref cast(sockaddr ref);
     var send_address_byte_count s32;
 
-    if address.ip.u32_value
+    switch address.tag
+    case platform_network_address_tag.ip_v4
     {
+        var address_in = address_union ref cast(sockaddr_in ref);
         address_in.sin_family      = AF_INET;
-        address_in.sin_addr.s_addr = address.ip.u32_value;
+        address_in.sin_addr.s_addr = address.ip_v4.u32_value;
         address_in.sin_port        = htons(address.port);
-
-        send_address = address_in ref cast(sockaddr ref);
         send_address_byte_count = type_byte_count(sockaddr_in);
+    }
+    case platform_network_address_tag.ip_v6
+    {
+        var address_in = address_union ref cast(sockaddr_in6 ref);
+        address_in.sin6_family = AF_INET6;
+        address_in.in6_addr    = htons(address.ip_v6.u16_values);
+        address_in.sin6_port   = htons(address.port);
+        send_address_byte_count = type_byte_count(sockaddr_in6);
+    }
+    else
+    {
+        assert(false);
     }
 
     var send_count = sendto(send_socket.handle, data.base, data.count cast(s32), 0, send_address, send_address_byte_count);
@@ -464,9 +543,31 @@ func platform_network_receive platform_network_receive_type
 
     buffer_used_byte_count deref = 0;
 
-    var address_in sockaddr_in;
-    var receive_address = address_in ref cast(sockaddr ref);
-    var receive_address_byte_count s32 = type_byte_count(sockaddr_in);
+    var address_union SOCKADDR_STORAGE;
+    var receive_address = address_union ref cast(sockaddr ref);
+    var receive_address_byte_count s32;
+
+    switch receive_socket.address_tag
+    case platform_network_address_tag.ip_v4
+    {
+        // var address_in = address_union ref cast(sockaddr_in ref);
+        // address_in.sin_family      = AF_INET;
+        // address_in.sin_addr.s_addr = address.ip_v4.u32_value;
+        // address_in.sin_port        = htons(address.port);
+        receive_address_byte_count = type_byte_count(sockaddr_in);
+    }
+    case platform_network_address_tag.ip_v6
+    {
+        // var address_in = address_union ref cast(sockaddr_in6 ref);
+        // address_in.sin6_family = AF_INET6;
+        // address_in.in6_addr    = htons(address.ip_v6).u16_values;
+        // address_in.sin6_port   = htons(address.port);
+        receive_address_byte_count = type_byte_count(sockaddr_in6);
+    }
+    else
+    {
+        assert(false);
+    }
 
     var receive_count = recvfrom(receive_socket.handle, (buffer.base + buffer_used_byte_count deref), (buffer.count - buffer_used_byte_count deref) cast(s32), 0, receive_address, receive_address_byte_count ref);
     if receive_count is SOCKET_ERROR
@@ -494,24 +595,85 @@ func platform_network_receive platform_network_receive_type
     buffer_used_byte_count deref += receive_count cast(usize);
 
     var address platform_network_address;
-    address.ip.u32_value = address_in.sin_addr.s_addr;
-    address.port = htons(address_in.sin_port);
+    address.tag = receive_socket.address_tag;
+
+    switch receive_socket.address_tag
+    case platform_network_address_tag.ip_v4
+    {
+        var address_in = address_union ref cast(sockaddr_in ref);
+        assert(address_in.sin_family is AF_INET);
+        address.ip_v4.u32_value = address_in.sin_addr.s_addr;
+        address.port            = htons(address_in.sin_port);
+    }
+    case platform_network_address_tag.ip_v6
+    {
+        var address_in = address_union ref cast(sockaddr_in6 ref);
+        assert(address_in.sin6_family is AF_INET6);
+        address.ip_v6.u16_values = htons(address_in.in6_addr);
+        address.port             = htons(address_in.sin6_port);
+    }
 
     return true, true, address;
 }
 
-func platform_network_query_dns_ip platform_network_query_dns_ip_type
+func platform_network_query_dns platform_network_query_dns_type
 {
     var records DNS_RECORD ref;
     var name_buffer u8[512];
-    var status = DnsQuery_A(as_cstring(name_buffer, name), DNS_TYPE_A, DNS_QUERY_STANDARD, null, records cast(u8 ref) ref, null);
-    var iterator = records;
+    var cname = as_cstring(name_buffer, name);
 
-    var ip platform_network_ip;
-    if iterator
-        ip = iterator.Data.A.IpAddress ref cast(platform_network_ip ref) deref;
+    var ok = false;
+    var address platform_network_address;
 
-    DnsRecordListFree(records, 0);
+    // check ip v4
+    {
+        var status = DnsQuery_A(cname, DNS_TYPE_A, DNS_QUERY_BYPASS_CACHE, null, records cast(u8 ref) ref, null);
+        require((status is ERROR_SUCCESS) or (status is DNS_INFO_NO_RECORDS));
+        var iterator = records;
 
-    return iterator is_not null, ip;
+        if iterator
+        {
+            address.tag   = platform_network_address_tag.ip_v4;
+            address.ip_v4 = iterator.Data.A.IpAddress ref cast(platform_network_ip_v4 ref) deref;
+            ok = true;
+        }
+
+        DnsRecordListFree(records, 0);
+    }
+
+    // check ip v6
+    if not ok
+    {
+        var status = DnsQuery_A(cname, DNS_TYPE_AAAA, DNS_QUERY_BYPASS_CACHE, null, records cast(u8 ref) ref, null);
+        require((status is ERROR_SUCCESS) or (status is DNS_INFO_NO_RECORDS));
+        var iterator = records;
+
+        if iterator
+        {
+            address.tag   = platform_network_address_tag.ip_v6;
+            address.ip_v6 = iterator.Data.AAAA.IP6Qword.base cast(platform_network_ip_v6 ref) deref;
+            ok = true;
+        }
+
+        DnsRecordListFree(records, 0);
+    }
+
+    return ok, address;
 }
+
+
+// func platform_network_query_dns_ip_v6 platform_network_query_dns_ip_v6_type
+// {
+//     var records DNS_RECORD ref;
+//     var name_buffer u8[512];
+//     var status = DnsQuery_A(as_cstring(name_buffer, name), DNS_TYPE_AAAA, DNS_QUERY_STANDARD, null, records cast(u8 ref) ref, null);
+//     var iterator = records;
+//
+//     var ip platform_network_ip_v6;
+//     if iterator
+//         ip = iterator.Data.AAAA.IP6Qword.base cast(platform_network_ip_v6 ref) deref;
+//
+//     DnsRecordListFree(records, 0);
+//
+//     return iterator is_not null, ip;
+// }

@@ -1138,10 +1138,10 @@ func try_get_digit(out_digit u8 ref, head u32, base u8 = 10) (ok b8)
             return false;
 
         digit = head - "a"[0] + 10;
-        if digit >= base
+        if (digit < 10) or (digit >= base)
             digit = head - "A"[0] + 10;
 
-        if digit >= base
+        if (digit < 10) or (digit >= base)
             return false;
     }
 
