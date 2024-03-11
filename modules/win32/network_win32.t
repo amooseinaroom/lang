@@ -2,6 +2,7 @@
 module network;
 
 import win32;
+import meta;
 
 func WSAStartup(wVersionRequired u16, lpWSAData WSADATA ref) (result s32) calling_convention "__stdcall" extern_binding("Ws2_32", true);
 func WSACleanup() (result s32) calling_convention "__stdcall" extern_binding("Ws2_32", true);
@@ -625,9 +626,51 @@ func platform_network_query_dns platform_network_query_dns_type
     var ok = false;
     var address platform_network_address;
 
+    var dns_server DNS_ADDR;
+    {
+        var address platform_network_address;
+        address.tag = platform_network_address_tag.ip_v4;
+        address.ip_v4 = [ 1, 1, 1, 1 ] platform_network_ip_v4;
+        write_sockaddress(value_to_u8_array(dns_server), address);
+    }
+
+    if false
+    {
+        var name_buffer u16[512];
+        var wname = win32_utf8_to_wstring(name_buffer, name);
+
+        var dns_servers DNS_ADDR[1];
+
+        {
+            var address platform_network_address;
+            address.tag = platform_network_address_tag.ip_v4;
+            address.ip_v4 = [ 1, 1, 1, 1 ] platform_network_ip_v4;
+            write_sockaddress(value_to_u8_array(dns_servers[0]), address);
+        }
+
+        var dns_server_arrray DNS_ADDR_ARRAY;
+        dns_server_arrray.MaxCount  = type_byte_count(DNS_ADDR_ARRAY);
+        dns_server_arrray.AddrCount = dns_servers.count cast(u32);
+        dns_server_arrray.Family    = AF_INET; // servers can be ip4?
+        dns_server_arrray.AddrArray = dns_servers.base;
+
+        var request DNS_QUERY_REQUEST;
+        request.Version      = DNS_QUERY_REQUEST_VERSION1;
+        request.QueryName    = wname.base;
+        request.QueryType    = DNS_TYPE_AAAA;
+        request.QueryOptions = DNS_QUERY_BYPASS_CACHE;
+        request.pDnsServerList = null; // dns_server_arrray ref;
+
+        var result  DNS_QUERY_RESULT;
+        result.Version = DNS_QUERY_REQUEST_VERSION1;
+
+        var status = DnsQueryEx(request ref, result ref, null);
+        require((status is ERROR_SUCCESS) or (status is DNS_INFO_NO_RECORDS));
+    }
+
     // check ip v4
     {
-        var status = DnsQuery_A(cname, DNS_TYPE_A, DNS_QUERY_BYPASS_CACHE, null, records cast(u8 ref) ref, null);
+        var status = DnsQuery_A(cname, DNS_TYPE_A, DNS_QUERY_BYPASS_CACHE, dns_server ref, records cast(u8 ref) ref, null);
         require((status is ERROR_SUCCESS) or (status is DNS_INFO_NO_RECORDS));
         var iterator = records;
 
@@ -644,7 +687,7 @@ func platform_network_query_dns platform_network_query_dns_type
     // check ip v6
     if not ok
     {
-        var status = DnsQuery_A(cname, DNS_TYPE_AAAA, DNS_QUERY_BYPASS_CACHE, null, records cast(u8 ref) ref, null);
+        var status = DnsQuery_A(cname, DNS_TYPE_AAAA, DNS_QUERY_BYPASS_CACHE, dns_server ref, records cast(u8 ref) ref, null);
         require((status is ERROR_SUCCESS) or (status is DNS_INFO_NO_RECORDS));
         var iterator = records;
 
@@ -652,6 +695,7 @@ func platform_network_query_dns platform_network_query_dns_type
         {
             address.tag   = platform_network_address_tag.ip_v6;
             address.ip_v6 = iterator.Data.AAAA.IP6Qword.base cast(platform_network_ip_v6 ref) deref;
+            address.ip_v6.u16_values = htons(address.ip_v6.u16_values);
             ok = true;
         }
 
@@ -677,3 +721,36 @@ func platform_network_query_dns platform_network_query_dns_type
 //
 //     return iterator is_not null, ip;
 // }
+
+func write_sockaddress(buffer u8[], address platform_network_address) (byte_count s32)
+{
+    var byte_count s32;
+    switch address.tag
+    case platform_network_address_tag.ip_v4
+    {
+        byte_count = type_byte_count(sockaddr_in);
+        assert(byte_count <= buffer.count);
+
+        var address_in = buffer.base cast(sockaddr_in ref);
+        address_in.sin_family      = AF_INET;
+        address_in.sin_addr.s_addr = address.ip_v4.u32_value;
+        address_in.sin_port        = htons(address.port);
+
+    }
+    case platform_network_address_tag.ip_v6
+    {
+        byte_count = type_byte_count(sockaddr_in6);
+        assert(byte_count <= buffer.count);
+
+        var address_in = buffer.base cast(sockaddr_in6 ref);
+        address_in.sin6_family = AF_INET6;
+        address_in.in6_addr    = htons(address.ip_v6.u16_values);
+        address_in.sin6_port   = htons(address.port);
+    }
+    else
+    {
+        assert(false);
+    }
+
+    return byte_count;
+}

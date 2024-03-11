@@ -67,6 +67,8 @@ func SetWindowLongA(hWnd HWND, nIndex s32, dwNewLong s32) (result s32)          
 func LoadIconA(hInstance HINSTANCE, lpIconName cstring) (icon HICON)                                    calling_convention "__stdcall" extern_binding("user32", true);
 func SetClassLongPtrA(hWnd HWND, nIndex s32, dwNewLong s64 ref) (result u64 ref)                        calling_convention "__stdcall" extern_binding("user32", true);
 
+func MultiByteToWideChar(CodePage u32, dwFlags u32, lpMultiByteStr u8 ref, cbMultiByte s32, lpWideCharStr u16 ref, cchWideChar s32) (result s32) calling_convention "__stdcall" extern_binding("kernel32", true);
+
 // using s64 variant since it's long is not s32 in C/C++, thanks for nothing
 // func _InterlockedIncrement(Addend s32 ref) (incremented_value s32) intrinsic("intrin.h");
 // func _InterlockedDecrement(Addend s32 ref) (decremented_value s32) intrinsic("intrin.h");
@@ -107,7 +109,8 @@ func MONITORENUMPROC(unnamedParam1 HMONITOR, unnamedParam2 HDC, unnamedParam3 RE
 
 func IsDebuggerPresent() (ok u32) calling_convention "__stdcall" extern_binding("kernel32", true);
 
-func DnsQuery_A(pszName cstring, wType u16, Options u32, pExtra u8 ref, ppQueryResults u8 ref ref, pReserved u8 ref) (status s64) calling_convention "__stdcall" extern_binding("dnsapi", true);
+func DnsQuery_A(pszName cstring, wType u16, Options u32, pExtra u8 ref, ppQueryResults u8 ref ref, pReserved u8 ref) (status DNS_STATUS) calling_convention "__stdcall" extern_binding("dnsapi", true);
+func DnsQueryEx(pQueryRequest DNS_QUERY_REQUEST ref, pQueryResults DNS_QUERY_RESULT ref, pCancelHandle u8 ref) (status DNS_STATUS) calling_convention "__stdcall" extern_binding("dnsapi", true);
 func DnsFree(pData u8 ref, FreeType u32) calling_convention "__stdcall" extern_binding("dnsapi", true);
 
 func DnsRecordListFree(p u8 ref, ignored u32)
@@ -531,6 +534,10 @@ def XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE  = 7849 cast(s16);
 def XINPUT_GAMEPAD_RIGHT_THUMB_DEADZONE = 8689 cast(s16);
 def XINPUT_GAMEPAD_TRIGGER_THRESHOLD    = 30 cast(u8);
 
+def CP_UTF8 = 65001 cast(u32);
+
+def MB_ERR_INVALID_CHARS = 0x00000008 cast(u32);
+
 def DNS_TYPE_A    = 0x0001 cast(u16);
 def DNS_TYPE_AAAA = 0x001c cast(u16);
 
@@ -627,17 +634,53 @@ struct DNS_RECORD
     };
 }
 
-// struct DNS_QUERY_REQUEST
-// {
-//   ULONG                         Version;
-//   PCWSTR                        QueryName;
-//   WORD                          QueryType;
-//   ULONG64                       QueryOptions;
-//   PDNS_ADDR_ARRAY               pDnsServerList;
-//   ULONG                         InterfaceIndex;
-//   PDNS_QUERY_COMPLETION_ROUTINE pQueryCompletionCallback;
-//   PVOID                         pQueryContext;
-// } , *PDNS_QUERY_REQUEST;
+type DNS_STATUS s64;
+
+def DNS_QUERY_REQUEST_VERSION1 = 1 cast(u32);
+
+struct DNS_QUERY_REQUEST
+{
+    Version                  u32;
+    QueryName                u16 ref; // WSTR *
+    QueryType                u16;
+    QueryOptions             u64;
+    pDnsServerList           DNS_ADDR_ARRAY ref;
+    InterfaceIndex           u32;
+    pQueryCompletionCallback u8 ref; // PDNS_QUERY_COMPLETION_ROUTINE
+    pQueryContext            u8 ref; // void *
+}
+
+struct DNS_QUERY_RESULT
+{
+    Version       u32;
+    QueryStatus   DNS_STATUS;
+    QueryOptions  u64;
+    pQueryRecords DNS_RECORD ref;
+    Reserved      u8 ref; // void *
+}
+
+struct DNS_ADDR_ARRAY
+{
+    MaxCount     u32;
+    AddrCount    u32;
+    Tag          u32;
+    Family       u16;
+    WordReserved u16;
+    Flags        u32;
+    MatchFlag    u32;
+    Reserved1    u32;
+    Reserved2    u32;
+    AddrArray    DNS_ADDR ref;
+}
+
+def DNS_ADDR_MAX_SOCKADDR_LENGTH = 32 cast(u32);
+
+struct DNS_ADDR
+{
+  MaxSa            u8[DNS_ADDR_MAX_SOCKADDR_LENGTH];
+  DnsAddrUserDword u32[8];
+}
+
 
 struct SYSTEM_INFO
 {
@@ -731,4 +774,18 @@ struct WIN32_FIND_DATAA
     dwFileType    u32;  // Obsolete. Do not use
     dwCreatorType u32;  // Obsolete. Do not us
     wFinderFlags  u16;   // Obsolete. Do not us
+}
+
+func win32_utf8_to_wstring(buffer u16[], text string) (wtext u16[])
+{
+    assert(text.count < 0x7fffffffffffffff);
+
+    var wtext_count = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, text.base, text.count cast(s32), buffer.base, buffer.count cast(s32));
+    require(wtext_count);
+
+    assert(wtext_count + 1 < buffer.count);
+    // add null terminal, since most win32 functions want that
+    buffer[wtext_count] = 0;
+
+    return { wtext_count cast(u64), buffer.base } u16[];
 }
