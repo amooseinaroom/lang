@@ -668,24 +668,6 @@ func platform_network_query_dns platform_network_query_dns_type
         require((status is ERROR_SUCCESS) or (status is DNS_INFO_NO_RECORDS));
     }
 
-    // check ip v4
-    {
-        var status = DnsQuery_A(cname, DNS_TYPE_A, DNS_QUERY_BYPASS_CACHE, dns_server ref, records cast(u8 ref) ref, null);
-        require((status is ERROR_SUCCESS) or (status is DNS_INFO_NO_RECORDS));
-        var iterator = records;
-
-        if iterator
-        {
-            address.tag   = platform_network_address_tag.ip_v4;
-            address.ip_v4 = iterator.Data.A.IpAddress ref cast(platform_network_ip_v4 ref) deref;
-            ok = true;
-        }
-
-        DnsRecordListFree(records, 0);
-    }
-
-    // check ip v6
-    if not ok
     {
         var status = DnsQuery_A(cname, DNS_TYPE_AAAA, DNS_QUERY_BYPASS_CACHE, dns_server ref, records cast(u8 ref) ref, null);
         require((status is ERROR_SUCCESS) or (status is DNS_INFO_NO_RECORDS));
@@ -696,6 +678,23 @@ func platform_network_query_dns platform_network_query_dns_type
             address.tag   = platform_network_address_tag.ip_v6;
             address.ip_v6 = iterator.Data.AAAA.IP6Qword.base cast(platform_network_ip_v6 ref) deref;
             address.ip_v6.u16_values = htons(address.ip_v6.u16_values);
+            ok = true;
+        }
+
+        DnsRecordListFree(records, 0);
+    }
+
+    // check ip v4
+    if not ok
+    {
+        var status = DnsQuery_A(cname, DNS_TYPE_A, DNS_QUERY_BYPASS_CACHE, dns_server ref, records cast(u8 ref) ref, null);
+        require((status is ERROR_SUCCESS) or (status is DNS_INFO_NO_RECORDS));
+        var iterator = records;
+
+        if iterator
+        {
+            address.tag   = platform_network_address_tag.ip_v4;
+            address.ip_v4 = iterator.Data.A.IpAddress ref cast(platform_network_ip_v4 ref) deref;
             ok = true;
         }
 
