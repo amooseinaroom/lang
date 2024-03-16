@@ -1403,3 +1403,87 @@ func latin_to_lower_case(text string)
             text[i] = text[i] - "A"[0] + "a"[0];
     }
 }
+
+func utf8_advance(iterator string ref) (code u32, byte_count u32)
+{
+    assert(iterator.count);
+
+    var head = iterator[0];
+    if head <= 0x7F            
+    {
+        advance(iterator, 1);
+        return head, 1;
+    }
+    
+    var byte_count u32 = 4;    
+    var mask = 0xF0 cast(u8);
+    while (head bit_and mask) is_not mask
+    {
+        mask bit_shift_left= 1;
+        byte_count -= 1;
+    }
+    assert(byte_count > 1);
+    assert(byte_count <= iterator.count);
+    
+    var code = (head bit_and bit_not mask) bit_shift_left (6 * (byte_count - 1));
+    loop var i u32 = 1; byte_count
+        code bit_or= (iterator[i] bit_and bit_not 0x80) bit_shift_left (6 * (byte_count - i - 1));
+
+    advance(iterator, byte_count);
+    
+    return code, byte_count;
+}
+
+// 
+// INTERNAL u32
+// utf32_to_utf8_byte_count(u32 utf32_code)
+// {
+//     if (utf32_code <= 0x7F)
+//         return 1;
+//     
+//     if (utf32_code <= 0x7FF)
+//         return 2;
+//     
+//     if (utf32_code <= 0xFFFF)
+//         return 3;
+//     
+//     if (utf32_code <= 0x10FFFF)
+//         return 4;
+//     
+//     assert(0, "invalid utf32 code");
+//     return 0;
+// }
+// 
+// INTERNAL u32
+// write_utf8(u8 buffer[4], u32 utf32_code)
+// {
+//     if (utf32_code <= 0x7F) {
+//         buffer[0] = utf32_code;
+//         return 1;
+//     }
+//     
+//     if (utf32_code <= 0x7FF) {
+//         buffer[0] = 0xC0 | (utf32_code >> 6);            /* 110xxxxx */
+//         buffer[1] = 0x80 | (utf32_code & 0x3F);          /* 10xxxxxx */
+//         return 2;
+//     }
+//     
+//     if (utf32_code <= 0xFFFF) {
+//         buffer[1] = 0xE0 | (utf32_code >> 12);           /* 1110xxxx */
+//         buffer[2] = 0x80 | ((utf32_code >> 6) & 0x3F);   /* 10xxxxxx */
+//         buffer[3] = 0x80 | (utf32_code & 0x3F);          /* 10xxxxxx */
+//         return 3;
+//     }
+//     
+//     if (utf32_code <= 0x10FFFF) {
+//         buffer[0] = 0xF0 | (utf32_code >> 18);           /* 11110xxx */
+//         buffer[1] = 0x80 | ((utf32_code >> 12) & 0x3F);  /* 10xxxxxx */
+//         buffer[2] = 0x80 | ((utf32_code >> 6) & 0x3F);   /* 10xxxxxx */
+//         buffer[3] = 0x80 | (utf32_code & 0x3F);          /* 10xxxxxx */
+//         return 4;
+//     }
+//     
+//     assert(0, "invalid utf32 code");
+//     return 0;
+// }
+// 

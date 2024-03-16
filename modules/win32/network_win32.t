@@ -19,6 +19,7 @@ func connect(s SOCKET, name sockaddr ref, namelen s32)  (result s32) calling_con
 func sendto(s SOCKET, buf u8 ref, len s32, flags s32, to sockaddr ref, tolen s32) (send_byte_count s32) calling_convention "__stdcall" extern_binding("Ws2_32", true);
 func recvfrom(s SOCKET, buf u8 ref, len s32, flags s32, from sockaddr ref, fromlen s32 ref) (receive_byte_count s32) calling_convention "__stdcall" extern_binding("Ws2_32", true);
 func ioctlsocket(s SOCKET, cmd s32, argp u32 ref) (result s32)  calling_convention "__stdcall" extern_binding("Ws2_32", true);
+func setsockopt(s SOCKET, level s32, optname s32, optval u8 ref, optlen s32 ref) (result s32)  calling_convention "__stdcall" extern_binding("Ws2_32", true);
 func getsockopt(s SOCKET, level s32, optname s32, optval u8 ref, optlen s32 ref) (result s32)  calling_convention "__stdcall" extern_binding("Ws2_32", true);
 func getsockname(s SOCKET, name sockaddr ref, namelen s32 ref) (result s32)  calling_convention "__stdcall" extern_binding("Ws2_32", true);
 
