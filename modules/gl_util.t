@@ -10,6 +10,9 @@ import meta;
 
 def gl_util_debug = false;
 
+// override alignment from gl for testing
+def debug_gl_uniform_buffer_offset_alignment = 0 cast(u32);
+
 struct gl_api_base
 {
     is_version_3_3                         b8;
@@ -41,6 +44,12 @@ func gl_base_init(gl gl_api_base ref)
     glGetIntegerv(GL_UNIFORM_BUFFER_OFFSET_ALIGNMENT, gl.uniform_buffer_offset_alignment ref cast(s32 ref));
     glGetIntegerv(GL_MAX_SAMPLES,                     gl.max_framebuffer_multi_sample_count ref cast(s32 ref));
     glGetIntegerv(GL_MAX_COLOR_ATTACHMENTS,           gl.max_framebuffer_color_attachment_count ref cast(s32 ref));
+
+    if debug_gl_uniform_buffer_offset_alignment
+    {
+        assert(not (debug_gl_uniform_buffer_offset_alignment bit_and (debug_gl_uniform_buffer_offset_alignment - 1)), "debug_gl_uniform_buffer_offset_alignment must be power of two");
+        gl.uniform_buffer_offset_alignment = maximum(gl.uniform_buffer_offset_alignment, debug_gl_uniform_buffer_offset_alignment);
+    }
 }
 
 func gl_debug_message_callback GLDEBUGPROC
@@ -451,17 +460,17 @@ func gl_get_texture_color_format(color_format u32) (color_format u32, internal_c
     {
         color_format          = GL_DEPTH_COMPONENT;
         internal_color_format = GL_DEPTH_COMPONENT;
-    }    
+    }
     case GL_DEPTH_COMPONENT24
     {
         color_format          = GL_DEPTH_COMPONENT;
         internal_color_format = GL_DEPTH_COMPONENT24;
-    }   
+    }
     case GL_DEPTH_STENCIL
     {
         color_format          = GL_DEPTH_COMPONENT;
         internal_color_format = GL_DEPTH_STENCIL;
-    }    
+    }
     else
     {
         assert(0);
@@ -548,9 +557,9 @@ struct gl_framebuffer
 struct gl_framebuffer_color_and_depth
 {
     expand base gl_framebuffer;
-    
+
     color_buffer         u32;
-    depth_stencil_buffer u32;    
+    depth_stencil_buffer u32;
 }
 
 func resize_framebuffer(gl gl_api ref, framebuffer gl_framebuffer ref, width s32, height s32, color_buffers u32[], depth_stencil_buffer u32 = 0)
@@ -624,13 +633,13 @@ func resize_framebuffer(gl gl_api ref, framebuffer gl_framebuffer ref, width s32
 func get_framebuffer_texture(framebuffer gl_framebuffer, texture_handle u32, is_depth_stencil = false) (texture gl_texture)
 {
     assert(not is_depth_stencil or not framebuffer.depth_stencil_format);
-    
+
     var format u32;
     if is_depth_stencil
         format = framebuffer.depth_stencil_format;
     else
         format = framebuffer.format;
-        
+
     var texture = { texture_handle, framebuffer.width, framebuffer.height, format } gl_texture;
     return texture;
 }
@@ -1015,7 +1024,7 @@ func resize_buffer(gl gl_api ref, vertex_buffer gl_vertex_buffer ref, attribute_
     base_buffer.byte_count = vertex_buffer.vertex_count * vertex_type.byte_count cast(u32);
     var byte_count = vertex_count * vertex_type.byte_count;
     var was_recreated = resize_buffer(gl, GL_ARRAY_BUFFER, base_buffer ref, byte_count, vertices);
-    
+
     // type may have changed
     was_recreated or= base_buffer.handle and (vertex_buffer.item_byte_count is_not vertex_type.byte_count cast(u32));
 
@@ -1256,6 +1265,109 @@ func aligned_uniform_buffer_item_byte_count(gl gl_api ref, item_byte_count u32) 
 
     item_byte_count = (item_byte_count + alignment_mask) bit_and bit_not alignment_mask;
     return item_byte_count;
+}
+
+struct gl_uniform_buffer2
+{
+    handle                u32;
+    bind_index_plus_one   u32;
+    item_byte_count       u32;
+    item_count            u32;
+    item_offset_alignment u32;
+}
+
+func resize_buffer(gl gl_api ref, uniform_buffer gl_uniform_buffer2 ref, bind_index u32, typed_value lang_typed_value)
+{
+    assert(not uniform_buffer.bind_index_plus_one or (uniform_buffer.bind_index_plus_one is (bind_index + 1)));
+    uniform_buffer.bind_index_plus_one = bind_index + 1;
+
+    var item_byte_count u32;
+
+    var data u8[];
+    if typed_value.type.type_type is lang_type_info_type.array
+    {
+        var array_type = typed_value.type.array_type;
+        var base_array = typed_value.base_array;
+
+        item_byte_count = array_type.item_type.byte_count cast(u32);
+
+        data.count = array_type.item_type.byte_count * base_array.count;
+        data.base  = base_array.base;
+    }
+    else
+    {
+        item_byte_count = typed_value.type.byte_count cast(u32);
+
+        data.count = typed_value.type.byte_count;
+        data.base  = typed_value.base;
+    }
+
+    if not uniform_buffer.item_byte_count
+    {
+        assert(not (gl.uniform_buffer_offset_alignment bit_and (gl.uniform_buffer_offset_alignment - 1))); // alignment is power of 2
+
+        var item_offset_alignment u32 = 1;
+        while (item_offset_alignment * item_byte_count) mod gl.uniform_buffer_offset_alignment
+            item_offset_alignment bit_shift_left= 1;
+
+        uniform_buffer.item_offset_alignment = item_offset_alignment;
+    }
+
+    assert(not uniform_buffer.item_byte_count or (uniform_buffer.item_byte_count is item_byte_count));
+    uniform_buffer.item_byte_count = item_byte_count;
+
+    var buffer gl_buffer;
+    buffer.handle     = uniform_buffer.handle;
+    buffer.byte_count = uniform_buffer.item_byte_count * uniform_buffer.item_count;
+    resize_buffer(gl, GL_UNIFORM_BUFFER, buffer ref, data.count, data.base);
+
+    uniform_buffer.handle = buffer.handle;
+
+    assert((buffer.byte_count mod uniform_buffer.item_byte_count) is 0);
+    uniform_buffer.item_count = buffer.byte_count / uniform_buffer.item_byte_count;
+}
+
+func bind_uniform_buffer(gl gl_api ref, buffer gl_uniform_buffer2, item_offset u32 = 0, item_count u32 = 0)
+{
+    if item_offset is_not 0
+    {
+        assert(item_offset < buffer.item_count);
+
+        if item_count is 0
+            item_count = buffer.item_count - item_offset;
+
+        assert(item_offset + item_count <= buffer.item_count);
+
+        var byte_offset = buffer.item_byte_count * item_offset;
+        var alignment_mask = gl.uniform_buffer_offset_alignment - 1;
+        assert(not (byte_offset bit_and alignment_mask));
+
+        glBindBufferRange(GL_UNIFORM_BUFFER, buffer.bind_index_plus_one - 1, buffer.handle, byte_offset, buffer.item_byte_count * item_count);
+    }
+    else
+    {
+        glBindBufferBase(GL_UNIFORM_BUFFER, buffer.bind_index_plus_one - 1, buffer.handle);
+    }
+}
+
+func uniform_buffer_align_offset(buffer gl_uniform_buffer2, item_offset u32 ref)
+{
+    assert(buffer.item_offset_alignment, "call resize_buffer first");
+
+    var mask = buffer.item_offset_alignment - 1;
+    assert(not (mask bit_and buffer.item_offset_alignment)); // power of two?
+    item_offset deref = (item_offset deref + mask) bit_and bit_not mask;
+}
+
+func reallocate_array_to_uniform_buffer_offset_alignment(gl gl_api ref, memory memory_arena
+ ref, buffer gl_uniform_buffer2, typed_array lang_typed_value)
+{
+    var array_type = typed_array.type.array_type;
+    var base_array = typed_array.base_array;
+
+    var new_count = base_array.count cast(u32);
+    uniform_buffer_align_offset(buffer, new_count ref);
+    reallocate_array(memory, typed_array, new_count);
 }
 
 // from GL_TEXTURE_CUBE_MAP_POSITIVE_X to GL_TEXTURE_CUBE_MAP_POSITIVE_X + 5
