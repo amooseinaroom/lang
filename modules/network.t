@@ -57,6 +57,24 @@ struct platform_network_socket_base
     is_udp      b8;
 }
 
+enum platform_network_result u8
+{
+    ok; // kinda sad ok is 0 :(
+
+    // recoverable errors
+
+    // close socket and try reconnect
+    error_connection_closed;
+
+    // receive buffer is too small
+    error_buffer_to_small_for_message;
+
+    // unrecoverable errors
+
+    // trying to reach an ipv6 address, while only supporting ipv4 locally
+    error_local_ipv4_can_not_reach_remote_ipv6;
+}
+
 def platform_network_timeout_milliseconds_zero =   0 cast(u32);
 def platform_network_timeout_milliseconds_block = -1 cast(u32);
 
@@ -85,10 +103,10 @@ func platform_network_connect platform_network_connect_type
 func platform_network_peer_open_type(network platform_network ref, address_tag platform_network_address_tag, port u16 = 0) (udp_socket platform_network_socket);
 func platform_network_peer_close_type(network platform_network ref, udp_socket platform_network_socket ref);
 
-func platform_network_send_type(network platform_network ref, send_socket platform_network_socket, address = {} platform_network_address, data u8[], timeout_milliseconds = platform_network_timeout_milliseconds_block) (ok b8);
+func platform_network_send_type(network platform_network ref, send_socket platform_network_socket, address = {} platform_network_address, data u8[], timeout_milliseconds = platform_network_timeout_milliseconds_block) (result platform_network_result);
 
 // if has_data is true and buffer_used_byte_count is 0 just continue polling
-func platform_network_receive_type(network platform_network ref, receive_socket platform_network_socket, buffer u8[], buffer_used_byte_count usize ref, timeout_milliseconds = platform_network_timeout_milliseconds_block) (ok b8, has_data b8, address platform_network_address);
+func platform_network_receive_type(network platform_network ref, receive_socket platform_network_socket, buffer u8[], buffer_used_byte_count usize ref, timeout_milliseconds = platform_network_timeout_milliseconds_block) (result platform_network_result, has_data b8, address platform_network_address);
 
 func platform_network_query_dns_type(network platform_network ref, name string) (ok b8, address platform_network_address);
 

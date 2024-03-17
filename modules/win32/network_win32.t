@@ -19,7 +19,7 @@ func connect(s SOCKET, name sockaddr ref, namelen s32)  (result s32) calling_con
 func sendto(s SOCKET, buf u8 ref, len s32, flags s32, to sockaddr ref, tolen s32) (send_byte_count s32) calling_convention "__stdcall" extern_binding("Ws2_32", true);
 func recvfrom(s SOCKET, buf u8 ref, len s32, flags s32, from sockaddr ref, fromlen s32 ref) (receive_byte_count s32) calling_convention "__stdcall" extern_binding("Ws2_32", true);
 func ioctlsocket(s SOCKET, cmd s32, argp u32 ref) (result s32)  calling_convention "__stdcall" extern_binding("Ws2_32", true);
-func setsockopt(s SOCKET, level s32, optname s32, optval u8 ref, optlen s32 ref) (result s32)  calling_convention "__stdcall" extern_binding("Ws2_32", true);
+func setsockopt(s SOCKET, level s32, optname s32, optval u8 ref, optlen s32) (result s32)  calling_convention "__stdcall" extern_binding("Ws2_32", true);
 func getsockopt(s SOCKET, level s32, optname s32, optval u8 ref, optlen s32 ref) (result s32)  calling_convention "__stdcall" extern_binding("Ws2_32", true);
 func getsockname(s SOCKET, name sockaddr ref, namelen s32 ref) (result s32)  calling_convention "__stdcall" extern_binding("Ws2_32", true);
 
@@ -39,6 +39,10 @@ def SOL_SOCKET = 0xFFFF cast(s32);
 
 def SO_ERROR   = 0x1007 cast(s32);
 
+def IPPROTO_IPV6 = 41 cast(s32);
+
+def IPV6_V6ONLY  = 27 cast(s32);
+
 def WSADESCRIPTION_LEN = 256;
 def WSASYS_STATUS_LEN  = 128;
 
@@ -50,6 +54,7 @@ def WSAECONNABORTED = 10053 cast(s32);
 def WSAECONNRESET   = 10054 cast(s32);
 def WSAETIMEDOUT    = 10060 cast(s32);
 def WSAECONNREFUSED = 10061 cast(s32);
+def WSAENETUNREACH  = 10051 cast(s32);
 
 def AF_INET    = 2  cast(u16);
 def AF_INET6   = 23 cast(u16);
@@ -393,6 +398,14 @@ func platform_network_win32_bind(network platform_network ref, is_udp b8, addres
     var is_non_blocking u32 = 1;
     ioctlsocket(handle, FIONBIO, is_non_blocking ref);
 
+    // enable ip v6 sockets to work with ip v4 too
+    if address_tag is platform_network_address_tag.ip_v6
+    {
+        var value = false cast(u32);
+        var ok = setsockopt(handle, IPPROTO_IPV6, IPV6_V6ONLY, value ref, type_byte_count(u32));
+        require(ok is_not SOCKET_ERROR, "setsockopt failed, WSAGetLastError(): %", WSAGetLastError());
+    }
+
     var ok = bind(handle, address, address_byte_count) is_not SOCKET_ERROR;
     require(ok, "WSAGetLastError(): %", WSAGetLastError());
 
@@ -451,66 +464,43 @@ func platform_network_send platform_network_send_type
 
     var result = select(0, null, write_sockets ref, null, timeout_ref);//is_not SOCKET_ERROR, "WSAGetLastError(): %", WSAGetLastError());
 
-    // timeout, return nothing
-    if not result
-    {
-        assert(0, "not implemented");
-    }
+    assert(result, "timeout not implemented");
 
     if result is SOCKET_ERROR
     {
         var error s32;
         var error_byte_count s32 = type_byte_count(s32);
-        if getsockopt(send_socket.handle, SOL_SOCKET, SO_ERROR, error ref, error_byte_count ref) is SOCKET_ERROR
-        {
-            require(false, "select failed, WSAGetLastError(): %", WSAGetLastError());
-            return false;
-        }
+        var result = getsockopt(send_socket.handle, SOL_SOCKET, SO_ERROR, error ref, error_byte_count ref);
+        require(result is_not SOCKET_ERROR, "getsockopt failed, WSAGetLastError(): %", WSAGetLastError());
     }
 
     var address_union SOCKADDR_STORAGE;
     var send_address = address_union ref cast(sockaddr ref);
-    var send_address_byte_count s32;
-
-    switch address.tag
-    case platform_network_address_tag.ip_v4
-    {
-        var address_in = address_union ref cast(sockaddr_in ref);
-        address_in.sin_family      = AF_INET;
-        address_in.sin_addr.s_addr = address.ip_v4.u32_value;
-        address_in.sin_port        = htons(address.port);
-        send_address_byte_count = type_byte_count(sockaddr_in);
-    }
-    case platform_network_address_tag.ip_v6
-    {
-        var address_in = address_union ref cast(sockaddr_in6 ref);
-        address_in.sin6_family = AF_INET6;
-        address_in.in6_addr    = htons(address.ip_v6.u16_values);
-        address_in.sin6_port   = htons(address.port);
-        send_address_byte_count = type_byte_count(sockaddr_in6);
-    }
-    else
-    {
-        assert(false);
-    }
+    var send_address_byte_count = write_sockaddress(value_to_u8_array(address_union), address);
 
     var send_count = sendto(send_socket.handle, data.base, data.count cast(s32), 0, send_address, send_address_byte_count);
     if send_count is SOCKET_ERROR
     {
         var error = WSAGetLastError();
         switch error
+        // WSAENETUNREACH can occur if a machine that only has an ipv4 tries to send to an ipv6 address
         case WSAECONNRESET, WSAECONNABORTED
-            return false;
+            return platform_network_result.error_connection_closed;
+        case WSAENETUNREACH
+        {
+            assert(address.tag is platform_network_address_tag.ip_v6);
+            return platform_network_result.error_local_ipv4_can_not_reach_remote_ipv6;
+        }
         // TODO: WSAWOULDBLOCK can still occur for non blocking sockets, even when select says it is ready
         case WSAWOULDBLOCK
-            return true;
+            return platform_network_result.ok;
 
         require(false, "send(socket.handle, data.base, data.count cast(s32), 0) failed with WSAGetLastError(): %", error);
     }
 
     assert(send_count cast(usize) is data.count);
 
-    return true;
+    return platform_network_result.ok;
 }
 
 func platform_network_receive platform_network_receive_type
@@ -527,13 +517,13 @@ func platform_network_receive platform_network_receive_type
 
         // timeout, return nothing
         if not result
-            return true, false, {} platform_network_address;
+            return platform_network_result.ok, false, {} platform_network_address;
 
         if result is SOCKET_ERROR
         {
             var error = WSAGetLastError();
             if error is WSAEINPROGRESS
-                return true, false, {} platform_network_address;
+                return platform_network_result.ok, false, {} platform_network_address;
 
             require(false, "select(0, read_sockets ref, null, null, timeout ref) failed with WSAGetLastError(): %", error);
         }
@@ -551,25 +541,11 @@ func platform_network_receive platform_network_receive_type
 
     switch receive_socket.address_tag
     case platform_network_address_tag.ip_v4
-    {
-        // var address_in = address_union ref cast(sockaddr_in ref);
-        // address_in.sin_family      = AF_INET;
-        // address_in.sin_addr.s_addr = address.ip_v4.u32_value;
-        // address_in.sin_port        = htons(address.port);
         receive_address_byte_count = type_byte_count(sockaddr_in);
-    }
     case platform_network_address_tag.ip_v6
-    {
-        // var address_in = address_union ref cast(sockaddr_in6 ref);
-        // address_in.sin6_family = AF_INET6;
-        // address_in.in6_addr    = htons(address.ip_v6).u16_values;
-        // address_in.sin6_port   = htons(address.port);
         receive_address_byte_count = type_byte_count(sockaddr_in6);
-    }
     else
-    {
         assert(false);
-    }
 
     var receive_count = recvfrom(receive_socket.handle, (buffer.base + buffer_used_byte_count deref), (buffer.count - buffer_used_byte_count deref) cast(s32), 0, receive_address, receive_address_byte_count ref);
     if receive_count is SOCKET_ERROR
@@ -583,12 +559,16 @@ func platform_network_receive platform_network_receive_type
         switch error
         // HACK: udp sockets ignore this message
         case WSAECONNRESET, WSAECONNABORTED
-            return receive_socket.is_udp, receive_socket.is_udp, {} platform_network_address;
-        // HACK: WSAEMSGSIZE indicates buffer is too small, we drop those messages
+        {
+            var result = platform_network_result.ok;
+            if not receive_socket.is_udp
+                result = platform_network_result.error_connection_closed;
+
+            return result, receive_socket.is_udp, {} platform_network_address;
+        }
         case WSAEMSGSIZE
         {
-            assert(0);
-            return true, true, {} platform_network_address;
+            return platform_network_result.error_buffer_to_small_for_message, true, {} platform_network_address;
         }
 
         require(false, "recv(socket.handle, (buffer.base + byte_offset deref), (buffer.count - byte_offset deref) cast(s32), 0) failed with WSAGetLastError(): %", error);
@@ -615,7 +595,7 @@ func platform_network_receive platform_network_receive_type
         address.port             = htons(address_in.sin6_port);
     }
 
-    return true, true, address;
+    return platform_network_result.ok, true, address;
 }
 
 func platform_network_query_dns platform_network_query_dns_type
