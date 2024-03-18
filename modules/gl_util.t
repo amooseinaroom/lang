@@ -1302,6 +1302,8 @@ func resize_buffer(gl gl_api ref, uniform_buffer gl_uniform_buffer2 ref, bind_in
         data.base  = typed_value.base;
     }
 
+    assert((item_byte_count mod 16) is 0, "assuming std140 layout 16 byte alignment");
+
     if not uniform_buffer.item_byte_count
     {
         assert(not (gl.uniform_buffer_offset_alignment bit_and (gl.uniform_buffer_offset_alignment - 1))); // alignment is power of 2
