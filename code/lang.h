@@ -4625,9 +4625,13 @@ types_are_compatible_declaration
     }
 
     if (!is_node_type(to.name_type.node, alias_type) || !is_node_type(from.name_type.node, alias_type) || (to.name_type.node == from.name_type.node))
+    {
         return result;
+    }
     else
+    {
         return type_compatibility_requires_cast;
+    }
 }
 
 maybe_add_cast_declaration

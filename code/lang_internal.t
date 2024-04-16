@@ -15,12 +15,12 @@ func assert assert_type { }
 func require assert_type { }
 
 type usize u64;
-type ssize s64; 
+type ssize s64;
 
-type b8 u8; 
-type b32 u32; 
+type b8 u8;
+type b32 u32;
 
-type string u8[]; 
+type string u8[];
 
 type cstring u8 ref;
 
@@ -36,29 +36,31 @@ struct lang_base_array
 }
 
 struct lang_code_location
-{ 
+{
     module   string;
     file     string;
     function string;
     file_index u32;
-    line       u32; 
-    column     u32; 
-} 
+    line       u32;
+    column     u32;
+}
 
+// same order as ast_type_list in lang.h
 enum lang_type_info_type u32
 {
+    empty; // unused
     number;
     enumeration;
-    array;
+    function;
     compound;
     union;
-    function;
+    array;
 }
 
 struct lang_type_info
 {
     alias             string;
-    
+
     expand actual_type union
     {
         reference        u8 ref;
@@ -69,10 +71,10 @@ struct lang_type_info
         union_type       lang_type_info_union ref;
         function_type    lang_type_info_function ref;
     };
-    
+
     type_type         lang_type_info_type;
     byte_count        usize;
-    indirection_count u32;    
+    indirection_count u32;
     byte_alignment    u32;
 }
 
@@ -82,12 +84,12 @@ enum lang_type_info_number_type u32
     u16;
     u32;
     u64;
-    
+
     s8;
     s16;
     s32;
     s64;
-    
+
     f32;
     f64;
 }
@@ -136,7 +138,7 @@ struct lang_type_info_function
 struct lang_type_info_array
 {
     item_type  lang_type_info;
-    
+
     // 0 means is not fixed size
     item_count usize;
     byte_count usize;
@@ -157,14 +159,14 @@ struct lang_type_info_enumeration_item
 struct lang_typed_value
 {
     type lang_type_info;
-    
+
     expand value union
     {
         // for union, compound, functions and reference values
         base       u8 ref;
-        
+
         base_array lang_base_array ref;
-    
+
     // requires union literal field support in C++ backend (or switch to C backend, bot that's just a hack)
     multiline_comment
     {
@@ -173,17 +175,17 @@ struct lang_typed_value
         u16_number u16;
         u32_number u32;
         u64_number u64; // accessing this is always fine for any unsinged interger and enum values
-        
+
         s8_number  s8;
         s16_number s16;
         s32_number s32;
         s64_number s64; // accessing this is always fine for any singed interger
-        
+
         // you have to know access the proper type for floating point numbers
-        f32_number f32; 
+        f32_number f32;
         f64_number f64;
     }
-    
+
     };
 }
 
@@ -191,18 +193,18 @@ struct lang_typed_value
 struct lang_type_info_table
 {
     number_types           lang_type_info_number[1];
-    
+
     enumeration_types      lang_type_info_enumeration[1];
     enumeration_item_types lang_type_info_enumeration_item[1];
-    
+
     array_types            lang_type_info_array[1];
-    
+
     compound_types         lang_type_info_compound[1];
     compound_field_types   lang_type_info_compound_field[1];
-    
+
     union_types            lang_type_info_union[1];
     union_field_types      lang_type_info_union_field[1];
-    
+
     function_types         lang_type_info_function[1];
 }
 
@@ -224,6 +226,6 @@ func lang_assert_array_bounds(index usize, count usize) (result usize)
 {
     if lang_enable_array_bound_checks
         assert(index < count, "array index is out of bounds, index % >= count %", index, count);
-        
+
     return index;
 }

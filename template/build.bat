@@ -13,10 +13,10 @@ set lang_path=%project%lang
 
 if %debug%==1 (
     set link_options=/link /nologo /INCREMENTAL:NO /LIBPATH:"%lang_path%\debug" /LIBPATH:"%lang_path%\steamworks_sdk_157\sdk\redistributable_bin\win64"
-    set options=/MTd /Od /DEBUG /Zi /EHsc /nologo
+    set options= /MTd /Od /DEBUG /Zi /EHsc /nologo
 ) else (
     set link_options=/link /nologo /INCREMENTAL:NO /LIBPATH:"%lang_path%\release" /LIBPATH:"%lang_path%\steamworks_sdk_157\sdk\redistributable_bin\win64"
-    set options=/MT /O2 /EHsc /nologo
+    set options=/TC /MT /O2 /EHsc /nologo
 )
 
 set build=%project%build
@@ -35,7 +35,7 @@ if %debug%==1 (
     set includes=%includes% %project%code\build\release.t
 )
 
-set command=%lang_path%\lang -cpp %build%\%name%.cpp %includes%
+set command=%lang_path%\lang -cpp %build%\%name%.c %includes%
 
 if %print_command%== 1 ( echo %command% )
 
@@ -45,13 +45,13 @@ if %ERRORLEVEL%==0 (
     cd %build%
 
     if %hot_code_reloading%==1 (
-        cl /Fo%name% /c %name%.cpp %options%
+        cl /Fo%name% /c %name%.c /TC %options%
 
-        cl /Fe%name%     %name%.obj %options%                    /LD %link_options% /PDB:%name%_dll
+        cl /Fe%name%     %name%.obj %options%                   /LD %link_options% /PDB:%name%_dll
         cl /Fe%name%_hot %name%.obj %options% embedded_files.res     %link_options%
         copy %name%_hot.exe %name%.exe >NUL 2>NUL
     ) else (
-        cl /Fe%name% %name%.cpp %options% embedded_files.res %link_options%
+        cl /Fe%name% %name%.c /TC %options% embedded_files.res %link_options%
     )
 
     cd %dir%
