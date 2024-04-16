@@ -145,6 +145,32 @@ string ast_binary_operator_names[] =
     ast_binary_operator_list(menum_name)
 };
 
+u32 ast_binary_operator_precedence[] =
+{
+    1, // or
+    2, // and
+    3, // xor
+    //
+    4, // is
+    4, // is_not
+    4, // is_less
+    4, // is_less_equal
+    4, // is_greater
+    4, // is_greater_equal
+    //
+    5, // bit_or
+    6, // bit_and
+    7, // bit_xor
+    8, // bit_shift_left
+    8, // bit_shift_right
+    //
+    9, // add
+    9, // subtract
+    10, // multiply
+    10, // divide
+    10, // modulo
+};
+
 string ast_scope_control_names[] =
 {
     s("break"),
@@ -946,11 +972,15 @@ struct lang_parser
     string source;
 
     string iterator;
-
-    string pending_comment;
-
-    string tested_patterns[32];
-    u32 tested_pattern_count;
+    struct
+    {
+        string pending_comment;
+        string last_location_token;
+        u8 *node_location_base;
+        ast_node *current_parent;
+        string tested_patterns[32];
+        u32 tested_pattern_count;
+    } parse_state;
 
     bool error;
 
@@ -967,11 +997,6 @@ struct lang_parser
 
     ast_constant *base_constants[lang_base_constant_count];
     ast_function *base_functions[lang_base_function_count];
-
-    string last_location_token;
-    u8 *node_location_base;
-
-    ast_node *current_parent;
 
     u32 next_node_index;
 
@@ -1057,14 +1082,15 @@ string advance_node_location(lang_parser *parser, u8 *base)
         --text.count;
     }
 
-    parser->node_location_base = parser->iterator.base;
+    parser->parse_state.node_location_base = parser->iterator.base;
+    parser->parse_state.tested_pattern_count = 0;
 
     return text;
 }
 
 void advance_node_location(lang_parser *parser)
 {
-    parser->last_location_token = advance_node_location(parser, parser->node_location_base);
+    parser->parse_state.last_location_token = advance_node_location(parser, parser->parse_state.node_location_base);
 }
 
 ast_node * begin_node(lang_parser *parser, ast_node *node, ast_node_type node_type, string location_text = {}, bool update_location_on_end = false)
@@ -1075,15 +1101,16 @@ ast_node * begin_node(lang_parser *parser, ast_node *node, ast_node_type node_ty
     assert(parser->node_comments.count == parser->next_node_index);
     resize_buffer(&parser->node_comments, parser->node_comments.count + 1);
     auto comment = &parser->node_comments.base[parser->node_comments.count - 1];
-    *comment = parser->pending_comment;
-    parser->pending_comment = {};
+    *comment = parser->parse_state.pending_comment;
+    parser->parse_state.pending_comment = {};
 
     node->index  = parser->next_node_index++;
     node->node_type  = node_type;
     node->type_index = parser->bucket_arrays[node_type].item_count - 1;
 
-    node->parent = parser->current_parent;
-    parser->current_parent = node;
+    node->parent = parser->parse_state.current_parent;
+    parser->parse_state.current_parent = node;
+    parser->parse_state.tested_pattern_count = 0;
 
     auto location = &parser->node_locations.base[node->index];
     *location = {};
@@ -1098,7 +1125,7 @@ ast_node * begin_node(lang_parser *parser, ast_node *node, ast_node_type node_ty
     }
     else
     {
-        location->text.base = parser->last_location_token.base;
+        location->text.base = parser->parse_state.last_location_token.base;
     }
 
     return node;
@@ -1106,9 +1133,9 @@ ast_node * begin_node(lang_parser *parser, ast_node *node, ast_node_type node_ty
 
 ast_node * end_node(lang_parser *parser, ast_node *node)
 {
-    assert(parser->error || node == parser->current_parent, "call end_node on parent");
+    assert(parser->error || node == parser->parse_state.current_parent, "call end_node on parent");
 
-    parser->current_parent = parser->current_parent->parent;
+    parser->parse_state.current_parent = parser->parse_state.current_parent->parent;
 
     auto location = &parser->node_locations.base[node->index];
     if (!location->text.count)
@@ -1150,12 +1177,11 @@ string try_consume_name(lang_parser *parser)
     {
         consume_white_or_comment(parser);
         advance_node_location(parser);
-        parser->tested_pattern_count = 0;
     }
     else
     {
-        assert(parser->tested_pattern_count < carray_count(parser->tested_patterns));
-        parser->tested_patterns[parser->tested_pattern_count++] = s("name");
+        assert(parser->parse_state.tested_pattern_count < carray_count(parser->parse_state.tested_patterns));
+        parser->parse_state.tested_patterns[parser->parse_state.tested_pattern_count++] = s("name");
     }
 
     return name;
@@ -1167,14 +1193,13 @@ bool try_consume(lang_parser *parser, string pattern)
     {
         consume_white_or_comment(parser);
         advance_node_location(parser);
-        parser->tested_pattern_count = 0;
 
         return true;
     }
     else
     {
-        assert(parser->tested_pattern_count < carray_count(parser->tested_patterns));
-        parser->tested_patterns[parser->tested_pattern_count++] = pattern;
+        assert(parser->parse_state.tested_pattern_count < carray_count(parser->parse_state.tested_patterns));
+        parser->parse_state.tested_patterns[parser->parse_state.tested_pattern_count++] = pattern;
 
         return false;
     }
@@ -1190,14 +1215,13 @@ bool try_consume_keyword(lang_parser *parser, string keyword)
         {
             consume_white_or_comment(parser);
             advance_node_location(parser);
-            parser->tested_pattern_count = 0;
 
             return true;
         }
     }
 
-    assert(parser->tested_pattern_count < carray_count(parser->tested_patterns));
-    parser->tested_patterns[parser->tested_pattern_count++] = keyword;
+    assert(parser->parse_state.tested_pattern_count < carray_count(parser->parse_state.tested_patterns));
+    parser->parse_state.tested_patterns[parser->parse_state.tested_pattern_count++] = keyword;
 
     parser->iterator = backup;
     return false;
@@ -1412,10 +1436,10 @@ void consume_white_or_comment(lang_parser *parser)
 
     if (start)
     {
-        if (!parser->pending_comment.count)
-            parser->pending_comment.base = start;
+        if (!parser->parse_state.pending_comment.count)
+            parser->parse_state.pending_comment.base = start;
 
-        parser->pending_comment.count = parser->iterator.base - parser->pending_comment.base;
+        parser->parse_state.pending_comment.count = parser->iterator.base - parser->parse_state.pending_comment.base;
     }
 }
 
@@ -1434,9 +1458,12 @@ void consume_white_or_comment(lang_parser *parser)
 #define parse_expression_declaration ast_node * parse_expression(lang_parser *parser)
 parse_expression_declaration;
 
+#define parse_expression_new_declaration ast_node * parse_expression_new(lang_parser *parser, u32 min_precedence)
+parse_expression_new_declaration;
+
 #define lang_require_expression_return_value(destination, return_value, parser) \
     destination = lang_require_call_return_value(parse_expression(parser), return_value); \
-    lang_require_return_value(destination, return_value, parser->iterator, "expected expression after '%.*s' in %.*s", fs(parser->last_location_token), fnode_type_name(parser->current_parent));
+    lang_require_return_value(destination, return_value, parser->iterator, "expected expression after '%.*s' in %.*s", fs(parser->parse_state.last_location_token), fnode_type_name(parser->parse_state.current_parent));
 
 #define lang_require_expression(destination, parser) lang_require_expression_return_value(destination, null, parser)
 
@@ -1454,7 +1481,7 @@ u32 get_bit_count_power_of_two(u64 value)
 
 void skip_multiline_comments(lang_parser *parser)
 {
-    auto node_location_base = parser->node_location_base;
+    auto node_location_base = parser->parse_state.node_location_base;
     while (try_consume_keyword(parser, s("multiline_comment")))
     {
         lang_require_consume_return_value("{", , "after multiline_comment");
@@ -1483,12 +1510,12 @@ void skip_multiline_comments(lang_parser *parser)
 
         lang_require_return_value(!depth, , comment, "expected matching closing '}' in multiline comment");
 
-        if (!parser->pending_comment.count)
-            parser->pending_comment = comment;
+        if (!parser->parse_state.pending_comment.count)
+            parser->parse_state.pending_comment = comment;
 
-        parser->pending_comment.count = comment.base + comment.count - parser->pending_comment.base;
+        parser->parse_state.pending_comment.count = comment.base + comment.count - parser->parse_state.pending_comment.base;
 
-        parser->node_location_base = node_location_base;
+        parser->parse_state.node_location_base = node_location_base;
 
         consume_white_or_comment(parser);
     }
@@ -1496,7 +1523,7 @@ void skip_multiline_comments(lang_parser *parser)
 
 ast_number * new_number_u64(lang_parser *parser, string location_text, u64 value, ast_node *parent = null)
 {
-    scope_save(parser->current_parent);
+    scope_save(parser->parse_state.current_parent);
 
     new_local_node(number, location_text);
     if (parent)
@@ -2110,7 +2137,7 @@ lang_complete_type parse_function_type(lang_parser *parser)
 ast_node * parse_base_expression(lang_parser *parser)
 {
     ast_node *root = null;
-    ast_node *parent = parser->current_parent;
+    ast_node *parent = parser->parse_state.current_parent;
     ast_node **parent_expression = &root;
 
     ast_node *expression = null;
@@ -2485,7 +2512,7 @@ ast_node * parse_base_expression(lang_parser *parser)
     {
         expression->parent = parent;
         *parent_expression = expression;
-        parser->current_parent = root->parent;
+        parser->parse_state.current_parent = root->parent;
     }
     else
     {
@@ -2505,6 +2532,7 @@ bool parse_binary_operator(ast_binary_operator_type *out_operator_type, lang_par
     auto keyword = try_consume_name(parser);
     if (keyword.count)
     {
+        // same order as ast_binary_operator_list
         string short_names[] = {
             s("or"),
             s("and"),
@@ -2579,7 +2607,53 @@ bool parse_binary_operator(ast_binary_operator_type *out_operator_type, lang_par
     return (operator_type != ast_binary_operator_type_count);
 }
 
-parse_expression_declaration
+ast_node * parse_expression_increasing_precedence(lang_parser *parser, ast_node *left, u32 min_precedence)
+{
+    auto backup = parser->iterator;
+    ast_binary_operator_type binary_operator_type;
+
+    if (!parse_binary_operator(&binary_operator_type, parser) || (ast_binary_operator_precedence[binary_operator_type] <= min_precedence) || try_consume(parser, s("=")))
+    {
+        parser->iterator = backup;
+        return left;
+    }
+
+    new_local_node(binary_operator, parser->node_locations.base[left->index].text, true);
+    binary_operator->operator_type = binary_operator_type;
+    binary_operator->left = left;
+    assert(!left->next);
+
+    auto right = lang_require_call(parse_expression_new(parser, ast_binary_operator_precedence[binary_operator_type]));
+    lang_require(right, parser->iterator, "expected espression after binary operator '%.*s'", fs(ast_binary_operator_names[binary_operator->operator_type]));
+    assert(!right->next)
+    binary_operator->left->next = right;
+    left->parent  = get_base_node(binary_operator);
+    right->parent = get_base_node(binary_operator);
+
+    return get_base_node(binary_operator);
+}
+
+parse_expression_new_declaration
+{
+    auto left = lang_require_call(parse_base_expression(parser));
+
+    if (!left)
+        return null;
+
+    while (true)
+    {
+        auto root = parse_expression_increasing_precedence(parser, left, min_precedence);
+        if (root == left)
+            return left;
+
+        left = root;
+    }
+
+    unreachable_codepath;
+    return null;
+}
+
+ast_node * parse_expression_old(lang_parser *parser)
 {
     auto left = lang_require_call(parse_base_expression(parser));
 
@@ -2622,6 +2696,168 @@ parse_expression_declaration
     }
 
     return left;
+}
+
+bool expressions_are_equal(lang_parser *parser, ast_node *left, ast_node *right)
+{
+    if (!left || !right)
+        return !left == !right;
+
+    if (left->node_type != right->node_type)
+        return false;
+
+    switch (left->node_type)
+    {
+        cases_complete("%.*s", fs(ast_node_type_names[left->node_type]));
+
+        case ast_node_type_name_reference:
+            return left->name_reference.name == right->name_reference.name;
+
+        case ast_node_type_number:
+        {
+            return values_are_equal(left->number.value, right->number.value);
+        } break;
+
+        case ast_node_type_string_literal:
+            return left->string_literal.text == right->string_literal.text;
+
+        case ast_node_type_compound_literal:
+        {
+            auto left_item  = left->compound_literal.first_argument;
+            auto right_item = right->compound_literal.first_argument;
+            for (; right_item && left_item; left_item = (ast_argument *) left_item->node.next)
+            {
+                if (!expressions_are_equal(parser, left_item->expression, right_item->expression))
+                    return false;
+
+                right_item = (ast_argument *) right_item->node.next;
+            }
+
+            if (!right_item != !left_item)
+                return false;
+
+            return true;
+        } break;
+
+        case ast_node_type_array_literal:
+        {
+            auto left_item  = left->array_literal.first_argument;
+            auto right_item = right->array_literal.first_argument;
+            for (; right_item && left_item; left_item = (ast_argument *) left_item->node.next)
+            {
+                if (!expressions_are_equal(parser, left_item->expression, right_item->expression))
+                    return false;
+
+                right_item = (ast_argument *) right_item->node.next;
+            }
+
+            if (!right_item != !left_item)
+                return false;
+
+            return true;
+        } break;
+
+        case ast_node_type_function_call:
+        {
+            if (!expressions_are_equal(parser, left->function_call.expression, right->function_call.expression))
+                return false;
+
+            auto left_item  = left->function_call.first_argument;
+            auto right_item = right->function_call.first_argument;
+            for (; right_item && left_item; left_item = (ast_argument *) left_item->node.next)
+            {
+                if (!expressions_are_equal(parser, left_item->expression, right_item->expression))
+                    return false;
+
+                right_item = (ast_argument *) right_item->node.next;
+            }
+
+            if (!right_item != !left_item)
+                return false;
+
+            return true;
+        } break;
+
+        case ast_node_type_array_index:
+        {
+            return expressions_are_equal(parser, left->array_index.array_expression, right->array_index.array_expression) && expressions_are_equal(parser, left->array_index.index_expression, right->array_index.index_expression);
+        } break;
+
+        case ast_node_type_dereference:
+        {
+            return expressions_are_equal(parser, left->dereference.expression, right->dereference.expression);
+        } break;
+
+        case ast_node_type_field_dereference:
+        {
+            return (left->field_dereference.name == right->field_dereference.name) && expressions_are_equal(parser, left->field_dereference.expression, right->field_dereference.expression);
+        } break;
+
+        case ast_node_type_type_byte_count:
+        case ast_node_type_get_type_info:
+        case ast_node_type_get_function_reference:
+        case ast_node_type_get_call_location:
+        case ast_node_type_get_call_argument_text:
+        {
+            return parser->node_locations.base[left->index].text == parser->node_locations.base[right->index].text;
+        } break;
+
+        case ast_node_type_unary_operator:
+        {
+            return (left->unary_operator.operator_type == right->unary_operator.operator_type) && expressions_are_equal(parser, left->unary_operator.expression, right->unary_operator.expression);
+        } break;
+
+        case ast_node_type_binary_operator        :
+        {
+            if (left->binary_operator.operator_type != right->binary_operator.operator_type)
+                return false;
+
+            return (expressions_are_equal(parser, left->binary_operator.left, right->binary_operator.left) && expressions_are_equal(parser, left->binary_operator.left->next, right->binary_operator.left->next)) || (expressions_are_equal(parser, left->binary_operator.left->next, right->binary_operator.left) && expressions_are_equal(parser, left->binary_operator.left, right->binary_operator.left->next));
+        } break;
+    }
+
+    unreachable_codepath;
+    return false;
+}
+
+// #define LANG_CHECK_PRECEDENCE_PARSING
+
+parse_expression_declaration
+{
+#ifdef LANG_CHECK_PRECEDENCE_PARSING
+
+    // HACK: to mark code that is resolved
+    auto tested_pattern_count = parser->parse_state.tested_pattern_count;
+    auto was_fixed = try_consume(parser, s("$fixed"));
+    if (!was_fixed)
+        parser->parse_state.tested_pattern_count = tested_pattern_count;
+
+    auto backup = parser->iterator;
+    auto parse_state = parser->parse_state;
+    auto debug_next_node_index = parser->next_node_index;
+    ast_node *old_expression = parse_expression_old(parser);
+    auto old_itertor = parser->iterator;
+
+    parser->iterator = backup;
+    parser->parse_state = parse_state;
+
+    ast_node *new_expression = parse_expression_new(parser, 0);
+
+    assert(old_itertor.base == parser->iterator.base);
+
+    if (!was_fixed && !expressions_are_equal(parser, old_expression, new_expression))
+    //if (!expressions_are_equal(parser, old_expression, new_expression))
+    {
+        parser_error_return_value(null, parser, backup, "expression precedence changed with new expression parser");
+    }
+
+#else
+
+    ast_node *new_expression = parse_expression_new(parser, 0);
+
+#endif
+
+    return new_expression;
 }
 
 // parses '=' right
@@ -2815,7 +3051,7 @@ ast_node * parse_single_or_scoped_statements(lang_parser *parser)
 
 ast_module * get_or_create_module(lang_parser *parser, string name)
 {
-    scope_save(parser->current_parent);
+    scope_save(parser->parse_state.current_parent);
 
     if (!name.count)
     {
@@ -2849,7 +3085,7 @@ ast_module * get_or_create_module(lang_parser *parser, string name)
 
 ast_file * get_or_create_internal_override_file(lang_parser *parser, ast_module *module)
 {
-    scope_save(parser->current_parent);
+    scope_save(parser->parse_state.current_parent);
 
     if (!module->internal_override_file)
     {
@@ -3107,7 +3343,7 @@ parse_single_statement_declaration
         auto name = try_consume_name(parser);
         lang_require(name.count, parser->iterator, "expected name after 'def'");
 
-        scope_save(parser->current_parent);
+        scope_save(parser->parse_state.current_parent);
         if (try_consume(parser, s("=")))
         {
             new_local_node(constant);
@@ -3449,9 +3685,9 @@ parse_single_statement_declaration
     auto builder = parser_error_begin(parser, parser->iterator, "expected statement.");
     print_line(builder, "starting with any of the following:");
 
-    for (u32 i = 0; i < parser->tested_pattern_count; i++)
+    for (u32 i = 0; i < parser->parse_state.tested_pattern_count; i++)
     {
-        print_line(builder, "'%.*s'", fs(parser->tested_patterns[i]));
+        print_line(builder, "'%.*s'", fs(parser->parse_state.tested_patterns[i]));
     }
 
     print_line(builder, "or an expression");
@@ -3469,7 +3705,7 @@ parse_statements_declaration
         // skip empty statements
         while (try_consume(parser, s(";")))
         {
-            if (parser->pending_comment.count)
+            if (parser->parse_state.pending_comment.count)
             {
                 new_local_node(base_node);
                 append_tail_next(&tail_next, base_node);
@@ -3487,7 +3723,7 @@ parse_statements_declaration
     }
 
     // give trailing comments a home // and always add one node at least
-    if (parser->pending_comment.count)
+    if (parser->parse_state.pending_comment.count)
     {
         new_local_node(base_node);
         append_tail_next(&tail_next, base_node);
@@ -5351,7 +5587,7 @@ ast_node * parse_statements(lang_parser *parser, string source, string source_na
     parser->iterator = parser->source;
 
     consume_white_or_comment(parser);
-    parser->node_location_base = parser->iterator.base;
+    parser->parse_state.node_location_base = parser->iterator.base;
     advance_node_location(parser);
 
     return lang_require_call(parse_statements(parser));
@@ -5364,7 +5600,7 @@ bool parse(lang_parser *parser, string source, string source_name)
         assert(it->path != source_name);
     }
 
-    parser->last_location_token = {};
+    parser->parse_state.last_location_token = {};
 
     new_local_node(file);
     file->path = source_name;
