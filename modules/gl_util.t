@@ -1372,13 +1372,28 @@ func reallocate_array_to_uniform_buffer_offset_alignment(gl gl_api ref, memory m
     reallocate_array(memory, typed_array, new_count);
 }
 
-// from GL_TEXTURE_CUBE_MAP_POSITIVE_X to GL_TEXTURE_CUBE_MAP_POSITIVE_X + 5
-def gl_cubemap_face_rotations =
-[
-    quat_axis_angle([ 0, 0, 1 ] vec3, pi32) * quat_axis_angle([ 0, 1, 0 ] vec3, pi32 * -0.5), // gl x+ (our x+)
-    quat_axis_angle([ 0, 0, 1 ] vec3, pi32) * quat_axis_angle([ 0, 1, 0 ] vec3, pi32 *  0.5), // gl x- (out x-)
-    quat_axis_angle([ 1, 0, 0 ] vec3, pi32 *  0.5),                                           // gl y+ (our y+)
-    quat_axis_angle([ 1, 0, 0 ] vec3, pi32 * -0.5),                                           // gl y- (our y-)
-    quat_axis_angle([ 0, 0, 1 ] vec3, pi32) * quat_axis_angle([ 0, 1, 0 ] vec3, pi32),        // gl z+ (our z-)
-    quat_axis_angle([ 0, 0, 1 ] vec3, pi32) * quat_axis_angle([ 0, 1, 0 ] vec3, 0),           // gl z- (our z+)
-] quat[];
+func gl_get_cubemap_face_rotation(index u32) (result quat)
+{
+    def gl_cubemap_face_rotations =
+    [
+        quat_axis_angle([ 0, 0, 1 ] vec3, pi32) * quat_axis_angle([ 0, 1, 0 ] vec3, pi32 * -0.5), // gl x+ (our x+)
+        quat_axis_angle([ 0, 0, 1 ] vec3, pi32) * quat_axis_angle([ 0, 1, 0 ] vec3, pi32 *  0.5), // gl x- (out x-)
+        quat_axis_angle([ 1, 0, 0 ] vec3, pi32 *  0.5),                                           // gl y+ (our y+)
+        quat_axis_angle([ 1, 0, 0 ] vec3, pi32 * -0.5),                                           // gl y- (our y-)
+        quat_axis_angle([ 0, 0, 1 ] vec3, pi32) * quat_axis_angle([ 0, 1, 0 ] vec3, pi32),        // gl z+ (our z-)
+        quat_axis_angle([ 0, 0, 1 ] vec3, pi32) * quat_axis_angle([ 0, 1, 0 ] vec3, 0),           // gl z- (our z+)
+    ] quat[];
+
+    return gl_cubemap_face_rotations[index];
+}
+
+// // from GL_TEXTURE_CUBE_MAP_POSITIVE_X to GL_TEXTURE_CUBE_MAP_POSITIVE_X + 5
+// def gl_cubemap_face_rotations =
+// [
+//     quat_axis_angle([ 0, 0, 1 ] vec3, pi32) * quat_axis_angle([ 0, 1, 0 ] vec3, pi32 * -0.5), // gl x+ (our x+)
+//     quat_axis_angle([ 0, 0, 1 ] vec3, pi32) * quat_axis_angle([ 0, 1, 0 ] vec3, pi32 *  0.5), // gl x- (out x-)
+//     quat_axis_angle([ 1, 0, 0 ] vec3, pi32 *  0.5),                                           // gl y+ (our y+)
+//     quat_axis_angle([ 1, 0, 0 ] vec3, pi32 * -0.5),                                           // gl y- (our y-)
+//     quat_axis_angle([ 0, 0, 1 ] vec3, pi32) * quat_axis_angle([ 0, 1, 0 ] vec3, pi32),        // gl z+ (our z-)
+//     quat_axis_angle([ 0, 0, 1 ] vec3, pi32) * quat_axis_angle([ 0, 1, 0 ] vec3, 0),           // gl z- (our z+)
+// ] quat[];

@@ -28,7 +28,7 @@ multiline_comment
     {
     }
 
-    // optionally 
+    // optionally
     // override func game_render game_render_type
     // {
     // }
@@ -149,7 +149,7 @@ func program_init program_init_type export
     gl_window_init(platform, gl, state.window ref);
     gl_set_vertical_sync(true);
 
-    // crc32_init();
+    crc32_init();
 
     init(state.ui ref, platform, gl);
     init(state.im ref, platform, gl);

@@ -1455,14 +1455,14 @@ void consume_white_or_comment(lang_parser *parser)
 
 #define lang_require_consume(pattern, message, ...) lang_require_consume_return_value(pattern, null, message, __VA_ARGS__)
 
-#define parse_expression_declaration ast_node * parse_expression(lang_parser *parser)
+#define parse_expression_declaration ast_node * parse_expression(lang_parser *parser, bool is_inside_constant)
 parse_expression_declaration;
 
-#define parse_expression_new_declaration ast_node * parse_expression_new(lang_parser *parser, u32 min_precedence)
+#define parse_expression_new_declaration ast_node * parse_expression_new(lang_parser *parser, bool is_inside_constant, u32 min_precedence)
 parse_expression_new_declaration;
 
 #define lang_require_expression_return_value(destination, return_value, parser) \
-    destination = lang_require_call_return_value(parse_expression(parser), return_value); \
+    destination = lang_require_call_return_value(parse_expression(parser, false), return_value); \
     lang_require_return_value(destination, return_value, parser->iterator, "expected expression after '%.*s' in %.*s", fs(parser->parse_state.last_location_token), fnode_type_name(parser->parse_state.current_parent));
 
 #define lang_require_expression(destination, parser) lang_require_expression_return_value(destination, null, parser)
@@ -1966,7 +1966,7 @@ lang_complete_type parse_type(lang_parser *parser, bool is_required)
         {
             new_local_node(array_type);
 
-            auto expression = lang_require_call_return_value(parse_expression(parser), {});
+            auto expression = lang_require_call_return_value(parse_expression(parser, true), {});
             lang_require_return_value(try_consume(parser, s("]")), {}, parser->iterator, "expected ']' after array count expression");
 
             resolve_complete_type(parser, &result);
@@ -2134,7 +2134,7 @@ lang_complete_type parse_function_type(lang_parser *parser)
     return type;
 }
 
-ast_node * parse_base_expression(lang_parser *parser)
+ast_node * parse_base_expression(lang_parser *parser, bool is_inside_constant)
 {
     ast_node *root = null;
     ast_node *parent = parser->parse_state.current_parent;
@@ -2270,7 +2270,7 @@ ast_node * parse_base_expression(lang_parser *parser)
         auto name = try_consume_name(parser);
         if (name.count)
         {
-            // check some psedo function calls
+            // check some pseudo function calls
             if (name == s("get_call_location"))
             {
                 new_local_leaf_node(get_call_location, name);
@@ -2380,6 +2380,8 @@ ast_node * parse_base_expression(lang_parser *parser)
                 // function call
                 if (try_consume(parser, s("(")))
                 {
+                    lang_require_return_value(!is_inside_constant, null, parser->iterator, "function calls are not allowed inside compile time constants");
+
                     new_local_node(function_call, parser->node_locations.base[expression->index].text);
 
                     auto argument_tail_next = make_tail_next(&function_call->first_argument);
@@ -2607,7 +2609,7 @@ bool parse_binary_operator(ast_binary_operator_type *out_operator_type, lang_par
     return (operator_type != ast_binary_operator_type_count);
 }
 
-ast_node * parse_expression_increasing_precedence(lang_parser *parser, ast_node *left, u32 min_precedence)
+ast_node * parse_expression_increasing_precedence(lang_parser *parser, bool is_inside_constant, ast_node *left, u32 min_precedence)
 {
     auto backup = parser->iterator;
     ast_binary_operator_type binary_operator_type;
@@ -2623,7 +2625,7 @@ ast_node * parse_expression_increasing_precedence(lang_parser *parser, ast_node 
     binary_operator->left = left;
     assert(!left->next);
 
-    auto right = lang_require_call(parse_expression_new(parser, ast_binary_operator_precedence[binary_operator_type]));
+    auto right = lang_require_call(parse_expression_new(parser, is_inside_constant, ast_binary_operator_precedence[binary_operator_type]));
     lang_require(right, parser->iterator, "expected espression after binary operator '%.*s'", fs(ast_binary_operator_names[binary_operator->operator_type]));
     assert(!right->next)
     binary_operator->left->next = right;
@@ -2635,14 +2637,14 @@ ast_node * parse_expression_increasing_precedence(lang_parser *parser, ast_node 
 
 parse_expression_new_declaration
 {
-    auto left = lang_require_call(parse_base_expression(parser));
+    auto left = lang_require_call(parse_base_expression(parser, is_inside_constant));
 
     if (!left)
         return null;
 
     while (true)
     {
-        auto root = parse_expression_increasing_precedence(parser, left, min_precedence);
+        auto root = parse_expression_increasing_precedence(parser, is_inside_constant, left, min_precedence);
         if (root == left)
             return left;
 
@@ -2653,9 +2655,9 @@ parse_expression_new_declaration
     return null;
 }
 
-ast_node * parse_expression_old(lang_parser *parser)
+ast_node * parse_expression_old(lang_parser *parser, bool is_inside_constant)
 {
-    auto left = lang_require_call(parse_base_expression(parser));
+    auto left = lang_require_call(parse_base_expression(parser, is_inside_constant));
 
     if (!left)
         return null;
@@ -2679,7 +2681,7 @@ ast_node * parse_expression_old(lang_parser *parser)
 
             // we don't have precendence now, we just build from left to right
             // a + b + c => (a + b) + c
-            auto right = lang_require_call(parse_base_expression(parser));
+            auto right = lang_require_call(parse_base_expression(parser, is_inside_constant));
             lang_require(right, parser->iterator, "expected espression after binary operator '%.*s'", fs(ast_binary_operator_names[binary_operator->operator_type]));
 
             assert(!right->next)
@@ -2835,13 +2837,13 @@ parse_expression_declaration
     auto backup = parser->iterator;
     auto parse_state = parser->parse_state;
     auto debug_next_node_index = parser->next_node_index;
-    ast_node *old_expression = parse_expression_old(parser);
+    ast_node *old_expression = parse_expression_old(parser, is_inside_constant);
     auto old_itertor = parser->iterator;
 
     parser->iterator = backup;
     parser->parse_state = parse_state;
 
-    ast_node *new_expression = parse_expression_new(parser, 0);
+    ast_node *new_expression = parse_expression_new(parser, is_inside_constant, 0);
 
     assert(old_itertor.base == parser->iterator.base);
 
@@ -2853,7 +2855,7 @@ parse_expression_declaration
 
 #else
 
-    ast_node *new_expression = parse_expression_new(parser, 0);
+    ast_node *new_expression = parse_expression_new(parser, is_inside_constant, 0);
 
 #endif
 
@@ -2997,10 +2999,10 @@ parse_arguments_declaration
     return compound_or_union_type;
 }
 
-#define parse_single_statement_declaration ast_node * parse_single_statement(bool *ok, lang_parser *parser)
+#define parse_single_statement_declaration ast_node * parse_single_statement(bool *ok, lang_parser *parser, bool is_file_scope)
 parse_single_statement_declaration;
 
-#define parse_statements_declaration ast_node * parse_statements(lang_parser *parser)
+#define parse_statements_declaration ast_node * parse_statements(lang_parser *parser, bool is_file_scope)
 parse_statements_declaration;
 
 #define clone_declaration ast_node * clone(lang_parser *parser, ast_node *root, ast_node *clone_parent)
@@ -3013,7 +3015,7 @@ bool parse_scoped_statements_begin(ast_node **first_statement, lang_parser *pars
     if (!try_consume(parser, s("{")))
         return false;
 
-    *first_statement = lang_require_call(parse_statements(parser));
+    *first_statement = lang_require_call(parse_statements(parser, false));
 
     if (!try_consume(parser, s("}")))
     {
@@ -3041,7 +3043,7 @@ ast_node * parse_single_or_scoped_statements(lang_parser *parser)
     auto ok = lang_require_call(parse_scoped_statements_begin(&first_statement, parser));
     if (!ok)
     {
-        first_statement = lang_require_call(parse_single_statement(&ok, parser));
+        first_statement = lang_require_call(parse_single_statement(&ok, parser, false));
     }
 
     // no need to call parse_scoped_statements_end, since this assumes a parent
@@ -3204,7 +3206,7 @@ parse_single_statement_declaration
     {
         new_local_node(branch);
         branch->scope.label = label;
-        branch->condition = lang_require_call(parse_expression(parser));
+        branch->condition = lang_require_call(parse_expression(parser, false));
         lang_require(branch->condition, parser->iterator, "expected condition expression after 'if'");
         label = {}; // consume label
 
@@ -3223,7 +3225,7 @@ parse_single_statement_declaration
     {
         new_local_node(loop);
         loop->scope.label = label;
-        loop->condition = lang_require_call(parse_expression(parser));
+        loop->condition = lang_require_call(parse_expression(parser, false));
         lang_require(loop->condition, parser->iterator, "expected condition expression after 'while'");
         label = {}; // consume label
 
@@ -3244,13 +3246,13 @@ parse_single_statement_declaration
         }
         else
         {
-            loop_with_counter->counter_statement = lang_require_call(parse_expression(parser));
+            loop_with_counter->counter_statement = lang_require_call(parse_expression(parser, false));
         }
         lang_require(loop_with_counter->counter_statement, parser->iterator, "expected counter statement afer 'loop'");
 
         lang_require_consume(";", " after loop counter");
 
-        loop_with_counter->end_condition = lang_require_call(parse_expression(parser));
+        loop_with_counter->end_condition = lang_require_call(parse_expression(parser, false));
         lang_require(loop_with_counter->end_condition, parser->iterator, "expected end condition expression after ';' in loop");
 
         loop_with_counter->scope.first_statement = lang_require_call(parse_single_or_scoped_statements(parser));
@@ -3271,14 +3273,14 @@ parse_single_statement_declaration
         {
             new_local_node(branch_switch_case);
 
-            branch_switch_case->first_expression = lang_require_call(parse_expression(parser));
+            branch_switch_case->first_expression = lang_require_call(parse_expression(parser, true));
             lang_require(branch_switch_case->first_expression, parser->iterator, "expected expression after 'case'");
 
             auto expression_tail = &branch_switch_case->first_expression->next;
 
             while (try_consume(parser, s(",")))
             {
-                auto expression = lang_require_call(parse_expression(parser));
+                auto expression = lang_require_call(parse_expression(parser, true));
                 lang_require(expression, parser->iterator, "expected expression after ',' in switch case");
                 *expression_tail = expression;
                 expression_tail = &expression->next;
@@ -3313,7 +3315,7 @@ parse_single_statement_declaration
             is_first = false;
 
             // set return value to function output type
-            auto expression = lang_require_call(parse_expression(parser));
+            auto expression = lang_require_call(parse_expression(parser, false));
             lang_require(expression, parser->iterator, "expected expression or ';' after return");
 
             append_tail_next(&expression_tail_next, expression);
@@ -3347,8 +3349,10 @@ parse_single_statement_declaration
         if (try_consume(parser, s("=")))
         {
             new_local_node(constant);
+
+            bool is_global = is_file_scope;
             constant->name = name;
-            constant->expression = lang_require_call(parse_expression(parser));
+            constant->expression = lang_require_call(parse_expression(parser, is_global));
             lang_require(try_consume(parser, s(";")), parser->iterator, "expected ';' after constant definition");
 
             if (override_module_internal_file)
@@ -3521,7 +3525,7 @@ parse_single_statement_declaration
 
             if (try_consume(parser, s("=")))
             {
-                enumeration_item->expression = lang_require_call(parse_expression(parser));
+                enumeration_item->expression = lang_require_call(parse_expression(parser, true));
                 assert(enumeration_item->expression);
 
                 previous_expression = enumeration_item->expression;
@@ -3651,7 +3655,7 @@ parse_single_statement_declaration
         // revert parse
         parser->iterator = backup;
 
-        auto expression = lang_require_call(parse_expression(parser));
+        auto expression = lang_require_call(parse_expression(parser, false));
         if (expression)
         {
             ast_binary_operator_type operator_type;
@@ -3714,7 +3718,7 @@ parse_statements_declaration
 
         // some statements are not added here, they might be global or a module or import
         bool ok;
-        auto statement = lang_require_call(parse_single_statement(&ok, parser));
+        auto statement = lang_require_call(parse_single_statement(&ok, parser, is_file_scope));
         if (statement)
             append_tail_next(&tail_next, statement);
 
@@ -5580,7 +5584,7 @@ struct ast_list_entry
     ast_node *node;
 };
 
-ast_node * parse_statements(lang_parser *parser, string source, string source_name)
+ast_node * parse_file_statements(lang_parser *parser, string source, string source_name)
 {
     parser->source_name = source_name;
     parser->source = source;
@@ -5590,7 +5594,7 @@ ast_node * parse_statements(lang_parser *parser, string source, string source_na
     parser->parse_state.node_location_base = parser->iterator.base;
     advance_node_location(parser);
 
-    return lang_require_call(parse_statements(parser));
+    return lang_require_call(parse_statements(parser, true));
 }
 
 bool parse(lang_parser *parser, string source, string source_name)
@@ -5610,7 +5614,7 @@ bool parse(lang_parser *parser, string source, string source_name)
     parser->current_file = file;
     append_list(&parser->file_list, file);
 
-    file->first_statement = lang_require_call_return_value(parse_statements(parser, source, source_name), false);
+    file->first_statement = lang_require_call_return_value(parse_file_statements(parser, source, source_name), false);
 
     lang_require_return_value(parser->iterator.count == 0, false, parser->iterator, "expected statements, unexpected '%c'", parser->iterator.base[0]);
 

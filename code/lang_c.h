@@ -1073,7 +1073,7 @@ print_expression_declaration
                     print_comment_end(buffer);
 
                     local_node_type(enumeration_item, field_dereference->reference);
-                    print_expression(buffer, enumeration_item->expression, null, false, false);
+                    print_expression(buffer, enumeration_item->expression, null, false, is_initialization);
                 }
             }
             else if (is_node_type(type.node, array_type) && ((ast_array_type *) type.node)->item_count_expression)
@@ -1427,6 +1427,41 @@ void print_condition_expression(lang_c_buffer *buffer, ast_node *condition, ast_
 
     if (requires_parentheses)
         print(builder, ")");
+}
+
+bool is_function_return_type_compound(ast_function_type *function_type)
+{
+    if (!function_type->output.name_type.node)
+        return false;
+
+    local_node_type(compound_type, function_type->output.name_type.node);
+
+    return (compound_type->first_field && compound_type->first_field->node.next);
+}
+
+void print_function_return_type(lang_c_buffer *buffer, ast_function_type *function_type)
+{
+    auto builder = &buffer->builder;
+
+    auto output = function_type->output;
+    if (type_is_not_empty(output))
+    {
+        local_node_type(compound_type, output.base_type.node);
+
+        if (is_function_return_type_compound(function_type))
+        {
+            print_type(buffer, output);
+        }
+        else
+        {
+            auto variable = compound_type->first_field;
+            print_type(buffer, variable->type);
+        }
+    }
+    else
+    {
+        print(builder, "void");
+    }
 }
 
 void print_statement(lang_c_buffer *buffer, ast_node *node, single_static_assignments *local_assignments, bool allow_globals)
@@ -1920,7 +1955,6 @@ void print_statement(lang_c_buffer *buffer, ast_node *node, single_static_assign
 
             if (function_return->first_expression)
             {
-
                 if (function_return->first_expression->next)
                 {
                     auto function = get_parent_scope(node);
@@ -1931,8 +1965,8 @@ void print_statement(lang_c_buffer *buffer, ast_node *node, single_static_assign
                     auto return_type = get_function_return_type(function_type).base_type.node;
 
                     print(builder, "return lang_sl(");
-                    print_type(buffer, return_type);
-                    print(builder, ") {");
+                    print_function_return_type(buffer, function_type);
+                    print(builder, ") { ");
                     is_literal = true;
                 }
                 else
@@ -2049,41 +2083,6 @@ string write(string *memory, cstring format, ...)
     va_end(va_arguments);
 
     return result;
-}
-
-bool is_function_return_type_compound(ast_function_type *function_type)
-{
-    if (!function_type->output.name_type.node)
-        return false;
-
-    local_node_type(compound_type, function_type->output.name_type.node);
-
-    return (compound_type->first_field && compound_type->first_field->node.next);
-}
-
-void print_function_return_type(lang_c_buffer *buffer, ast_function_type *function_type)
-{
-    auto builder = &buffer->builder;
-
-    auto output = function_type->output;
-    if (type_is_not_empty(output))
-    {
-        local_node_type(compound_type, output.base_type.node);
-
-        if (is_function_return_type_compound(function_type))
-        {
-            print_type(buffer, output);
-        }
-        else
-        {
-            auto variable = compound_type->first_field;
-            print_type(buffer, variable->type);
-        }
-    }
-    else
-    {
-        print(builder, "void");
-    }
 }
 
 void print_function_type(lang_c_buffer *buffer, ast_function_type *function_type, string name, ast_function *function)

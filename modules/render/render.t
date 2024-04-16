@@ -642,7 +642,7 @@ func capture(render render_system ref, gl gl_api ref, probe render_reflection_pr
 
         glClear(GL_COLOR_BUFFER_BIT bit_or GL_DEPTH_BUFFER_BIT);
 
-        var camera_to_world = mat4_transform(gl_cubemap_face_rotations[i], probe.position);
+        var camera_to_world = mat4_transform(gl_get_cubemap_face_rotation(i), probe.position);
 
         var world_to_clip = camera_to_clip * mat4_inverse_transform_unscaled(camera_to_world);
         var clip_to_world = camera_to_world * clip_to_camera;
@@ -711,7 +711,7 @@ func update_reflection_probe(render render_system ref, gl gl_api ref, probe rend
 
             glClear(GL_COLOR_BUFFER_BIT);
 
-            var camera_to_world = mat4_transform(gl_cubemap_face_rotations[i]);
+            var camera_to_world = mat4_transform(gl_get_cubemap_face_rotation(i));
             var clip_to_world = camera_to_world * clip_to_camera;
 
             glUniformMatrix4fv(render.environment_to_irradiance_map_shader.clip_to_world_projection, 1, GL_FALSE, clip_to_world.values.base);
@@ -749,7 +749,7 @@ func update_reflection_probe(render render_system ref, gl gl_api ref, probe rend
 
                 glClear(GL_COLOR_BUFFER_BIT);
 
-                var camera_to_world = mat4_transform(gl_cubemap_face_rotations[i]);
+                var camera_to_world = mat4_transform(gl_get_cubemap_face_rotation(i));
                 var clip_to_world = camera_to_world * clip_to_camera;
 
                 glUniformMatrix4fv(render.pbr_prefilter_environment_shader.clip_to_world_projection, 1, GL_FALSE, clip_to_world.values.base);
